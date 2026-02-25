@@ -1,4 +1,5 @@
 import type { ArcusDevice } from '../arcus/types.js';
+import { Contact, Motion, LeakH2O } from '../arcus/capabilities.js';
 import type { Config } from '../config.js';
 import type { HADiscoveryConfig } from '../ha/discovery.js';
 import { buildDeviceInfo, buildAvailability } from '../ha/discovery.js';
@@ -15,31 +16,31 @@ interface BinarySensorDef {
 
 const BINARY_SENSOR_DEFS: BinarySensorDef[] = [
   {
-    cap: 'cont',
-    attribute: 'cont:contact',
-    onValue: 'OPENED',
+    cap: Contact.NAMESPACE,
+    attribute: Contact.ATTR_CONTACT,
+    onValue: Contact.CONTACT_OPENED,
     deviceClass: 'door', // default; overridden for windows
     suffix: 'contact',
   },
   {
-    cap: 'mot',
-    attribute: 'mot:motion',
-    onValue: 'DETECTED',
+    cap: Motion.NAMESPACE,
+    attribute: Motion.ATTR_MOTION,
+    onValue: Motion.MOTION_DETECTED,
     deviceClass: 'motion',
     suffix: 'motion',
   },
   {
-    cap: 'leakh2o',
-    attribute: 'leakh2o:state',
-    onValue: 'LEAK',
+    cap: LeakH2O.NAMESPACE,
+    attribute: LeakH2O.ATTR_STATE,
+    onValue: LeakH2O.STATE_LEAK,
     deviceClass: 'moisture',
     suffix: 'leak',
   },
 ];
 
 function resolveContactDeviceClass(device: ArcusDevice): string {
-  const hint = device.attributes['cont:usehint'];
-  if (hint === 'WINDOW') return 'window';
+  const hint = device.attributes[Contact.ATTR_USEHINT];
+  if (hint === Contact.USEHINT_WINDOW) return 'window';
   return 'door';
 }
 
@@ -58,7 +59,7 @@ export const binarySensorMapper: Mapper = {
 
       const objectId = `${id}_${def.suffix}`;
       const deviceClass =
-        def.cap === 'cont' ? resolveContactDeviceClass(device) : def.deviceClass;
+        def.cap === Contact.NAMESPACE ? resolveContactDeviceClass(device) : def.deviceClass;
 
       configs.push({
         topic: discoveryTopic(config, 'binary_sensor', objectId),

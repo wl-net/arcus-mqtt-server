@@ -1,4 +1,5 @@
 import type { ArcusDevice } from '../arcus/types.js';
+import { Temperature, RelativeHumidity, DevicePower } from '../arcus/capabilities.js';
 import type { Config } from '../config.js';
 import type { HADiscoveryConfig } from '../ha/discovery.js';
 import { buildDeviceInfo, buildAvailability } from '../ha/discovery.js';
@@ -16,24 +17,24 @@ interface SensorDef {
 
 const SENSOR_DEFS: SensorDef[] = [
   {
-    cap: 'temp',
-    attribute: 'temp:temperature',
+    cap: Temperature.NAMESPACE,
+    attribute: Temperature.ATTR_TEMPERATURE,
     deviceClass: 'temperature',
     unit: '°C',
     suffix: 'temperature',
     stateClass: 'measurement',
   },
   {
-    cap: 'humid',
-    attribute: 'humid:humidity',
+    cap: RelativeHumidity.NAMESPACE,
+    attribute: RelativeHumidity.ATTR_HUMIDITY,
     deviceClass: 'humidity',
     unit: '%',
     suffix: 'humidity',
     stateClass: 'measurement',
   },
   {
-    cap: 'devpow',
-    attribute: 'devpow:battery',
+    cap: DevicePower.NAMESPACE,
+    attribute: DevicePower.ATTR_BATTERY,
     deviceClass: 'battery',
     unit: '%',
     suffix: 'battery',
@@ -47,7 +48,7 @@ export const sensorMapper: Mapper = {
     return SENSOR_DEFS.some(def => {
       if (!device.caps.has(def.cap)) return false;
       // Only create battery sensor for battery-powered devices
-      if (def.cap === 'devpow') return device.attributes['devpow:source'] === 'BATTERY';
+      if (def.cap === DevicePower.NAMESPACE) return device.attributes[DevicePower.ATTR_SOURCE] === DevicePower.SOURCE_BATTERY;
       return true;
     });
   },
@@ -58,7 +59,7 @@ export const sensorMapper: Mapper = {
 
     for (const def of SENSOR_DEFS) {
       if (!device.caps.has(def.cap)) continue;
-      if (def.cap === 'devpow' && device.attributes['devpow:source'] !== 'BATTERY') continue;
+      if (def.cap === DevicePower.NAMESPACE && device.attributes[DevicePower.ATTR_SOURCE] !== DevicePower.SOURCE_BATTERY) continue;
 
       const objectId = `${id}_${def.suffix}`;
 
@@ -87,7 +88,7 @@ export const sensorMapper: Mapper = {
 
     for (const def of SENSOR_DEFS) {
       if (!device.caps.has(def.cap)) continue;
-      if (def.cap === 'devpow' && device.attributes['devpow:source'] !== 'BATTERY') continue;
+      if (def.cap === DevicePower.NAMESPACE && device.attributes[DevicePower.ATTR_SOURCE] !== DevicePower.SOURCE_BATTERY) continue;
 
       const val = device.attributes[def.attribute];
       if (val !== undefined) {

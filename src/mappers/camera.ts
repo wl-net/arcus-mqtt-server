@@ -1,4 +1,5 @@
 import type { ArcusDevice } from '../arcus/types.js';
+import { Camera } from '../arcus/capabilities.js';
 import type { Config } from '../config.js';
 import type { HADiscoveryConfig } from '../ha/discovery.js';
 import { buildDeviceInfo, buildAvailability } from '../ha/discovery.js';
@@ -8,7 +9,7 @@ import type { Mapper } from './index.js';
 /** Maps Arcus camera → HA camera (discovery only, no stream) */
 export const cameraMapper: Mapper = {
   matches(device: ArcusDevice): boolean {
-    return device.caps.has('camera');
+    return device.caps.has(Camera.NAMESPACE);
   },
 
   buildDiscovery(config: Config, device: ArcusDevice): HADiscoveryConfig[] {

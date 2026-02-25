@@ -1,4 +1,5 @@
 import type { ArcusDevice, ArcusAttributes } from '../arcus/types.js';
+import { Switch, Dimmer } from '../arcus/capabilities.js';
 import type { Config } from '../config.js';
 import type { HADiscoveryConfig } from '../ha/discovery.js';
 import { buildDeviceInfo, buildAvailability } from '../ha/discovery.js';
@@ -8,7 +9,7 @@ import type { Mapper } from './index.js';
 /** Maps Arcus swit (without dim) → HA switch */
 export const switchMapper: Mapper = {
   matches(device: ArcusDevice): boolean {
-    return device.caps.has('swit') && !device.caps.has('dim');
+    return device.caps.has(Switch.NAMESPACE) && !device.caps.has(Dimmer.NAMESPACE);
   },
 
   buildDiscovery(config: Config, device: ArcusDevice): HADiscoveryConfig[] {
@@ -38,7 +39,7 @@ export const switchMapper: Mapper = {
 
   buildState(_config: Config, device: ArcusDevice): Record<string, unknown> {
     return {
-      switch: device.attributes['swit:state'] ?? 'OFF',
+      switch: device.attributes[Switch.ATTR_STATE] ?? 'OFF',
     };
   },
 
@@ -51,6 +52,6 @@ export const switchMapper: Mapper = {
     if (entity !== 'switch') return null;
     const value = payload.toUpperCase();
     if (value !== 'ON' && value !== 'OFF') return null;
-    return { 'swit:state': value };
+    return { [Switch.ATTR_STATE]: value };
   },
 };

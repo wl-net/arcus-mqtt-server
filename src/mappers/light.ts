@@ -1,4 +1,5 @@
 import type { ArcusDevice, ArcusAttributes } from '../arcus/types.js';
+import { Switch, Dimmer } from '../arcus/capabilities.js';
 import type { Config } from '../config.js';
 import type { HADiscoveryConfig } from '../ha/discovery.js';
 import { buildDeviceInfo, buildAvailability } from '../ha/discovery.js';
@@ -8,7 +9,7 @@ import type { Mapper } from './index.js';
 /** Maps Arcus dim → HA light (JSON schema) */
 export const lightMapper: Mapper = {
   matches(device: ArcusDevice): boolean {
-    return device.caps.has('dim');
+    return device.caps.has(Dimmer.NAMESPACE);
   },
 
   buildDiscovery(config: Config, device: ArcusDevice): HADiscoveryConfig[] {
@@ -38,8 +39,8 @@ export const lightMapper: Mapper = {
   buildState(_config: Config, device: ArcusDevice): Record<string, unknown> {
     return {
       light: {
-        state: device.attributes['swit:state'] === 'ON' ? 'ON' : 'OFF',
-        brightness: device.attributes['dim:brightness'] ?? 0,
+        state: device.attributes[Switch.ATTR_STATE] === 'ON' ? 'ON' : 'OFF',
+        brightness: device.attributes[Dimmer.ATTR_BRIGHTNESS] ?? 0,
       },
     };
   },
@@ -54,13 +55,13 @@ export const lightMapper: Mapper = {
     const cmd = JSON.parse(payload) as { state?: string; brightness?: number };
     const attrs: ArcusAttributes = {};
     if (cmd.state !== undefined) {
-      attrs['swit:state'] = cmd.state === 'ON' ? 'ON' : 'OFF';
+      attrs[Switch.ATTR_STATE] = cmd.state === 'ON' ? 'ON' : 'OFF';
     }
     if (cmd.brightness !== undefined) {
-      attrs['dim:brightness'] = cmd.brightness;
+      attrs[Dimmer.ATTR_BRIGHTNESS] = cmd.brightness;
       // Turn on if setting brightness > 0
       if (cmd.brightness > 0 && cmd.state === undefined) {
-        attrs['swit:state'] = 'ON';
+        attrs[Switch.ATTR_STATE] = 'ON';
       }
     }
     return Object.keys(attrs).length > 0 ? attrs : null;

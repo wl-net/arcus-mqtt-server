@@ -1,4 +1,5 @@
 import type { ArcusDevice, ArcusAttributes } from '../arcus/types.js';
+import { DoorLock } from '../arcus/capabilities.js';
 import type { Config } from '../config.js';
 import type { HADiscoveryConfig } from '../ha/discovery.js';
 import { buildDeviceInfo, buildAvailability } from '../ha/discovery.js';
@@ -8,7 +9,7 @@ import type { Mapper } from './index.js';
 /** Maps Arcus doorlock → HA lock */
 export const lockMapper: Mapper = {
   matches(device: ArcusDevice): boolean {
-    return device.caps.has('doorlock');
+    return device.caps.has(DoorLock.NAMESPACE);
   },
 
   buildDiscovery(config: Config, device: ArcusDevice): HADiscoveryConfig[] {
@@ -38,7 +39,7 @@ export const lockMapper: Mapper = {
 
   buildState(_config: Config, device: ArcusDevice): Record<string, unknown> {
     return {
-      lock: device.attributes['doorlock:lockstate'] ?? 'LOCKED',
+      lock: device.attributes[DoorLock.ATTR_LOCKSTATE] ?? DoorLock.LOCKSTATE_LOCKED,
     };
   },
 
@@ -50,8 +51,8 @@ export const lockMapper: Mapper = {
   ): ArcusAttributes | null {
     if (entity !== 'lock') return null;
     const cmd = payload.toUpperCase();
-    if (cmd === 'LOCK') return { 'doorlock:lockstate': 'LOCKED' };
-    if (cmd === 'UNLOCK') return { 'doorlock:lockstate': 'UNLOCKED' };
+    if (cmd === 'LOCK') return { [DoorLock.ATTR_LOCKSTATE]: DoorLock.LOCKSTATE_LOCKED };
+    if (cmd === 'UNLOCK') return { [DoorLock.ATTR_LOCKSTATE]: DoorLock.LOCKSTATE_UNLOCKED };
     return null;
   },
 };

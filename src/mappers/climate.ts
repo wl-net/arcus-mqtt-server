@@ -1,4 +1,5 @@
 import type { ArcusDevice, ArcusAttributes } from '../arcus/types.js';
+import { Thermostat, Temperature } from '../arcus/capabilities.js';
 import type { Config } from '../config.js';
 import type { HADiscoveryConfig } from '../ha/discovery.js';
 import { buildDeviceInfo, buildAvailability } from '../ha/discovery.js';
@@ -29,7 +30,7 @@ const ARCUS_TO_HA_ACTION: Record<string, string> = {
 /** Maps Arcus therm → HA climate */
 export const climateMapper: Mapper = {
   matches(device: ArcusDevice): boolean {
-    return device.caps.has('therm');
+    return device.caps.has(Thermostat.NAMESPACE);
   },
 
   buildDiscovery(config: Config, device: ArcusDevice): HADiscoveryConfig[] {
@@ -73,14 +74,14 @@ export const climateMapper: Mapper = {
   },
 
   buildState(_config: Config, device: ArcusDevice): Record<string, unknown> {
-    const mode = String(device.attributes['therm:hvacmode'] ?? 'OFF');
-    const active = String(device.attributes['therm:active'] ?? 'IDLE');
+    const mode = String(device.attributes[Thermostat.ATTR_HVACMODE] ?? 'OFF');
+    const active = String(device.attributes[Thermostat.ATTR_ACTIVE] ?? 'IDLE');
 
     return {
       climate_mode: ARCUS_TO_HA_MODE[mode] ?? 'off',
-      climate_current_temp: device.attributes['temp:temperature'] ?? 0,
-      climate_heat_setpoint: device.attributes['therm:heatsetpoint'] ?? 18,
-      climate_cool_setpoint: device.attributes['therm:coolsetpoint'] ?? 26,
+      climate_current_temp: device.attributes[Temperature.ATTR_TEMPERATURE] ?? 0,
+      climate_heat_setpoint: device.attributes[Thermostat.ATTR_HEATSETPOINT] ?? 18,
+      climate_cool_setpoint: device.attributes[Thermostat.ATTR_COOLSETPOINT] ?? 26,
       climate_action: ARCUS_TO_HA_ACTION[active] ?? 'idle',
     };
   },
@@ -94,12 +95,12 @@ export const climateMapper: Mapper = {
     switch (entity) {
       case 'climate_mode': {
         const arcusMode = HA_TO_ARCUS_MODE[payload];
-        return arcusMode ? { 'therm:hvacmode': arcusMode } : null;
+        return arcusMode ? { [Thermostat.ATTR_HVACMODE]: arcusMode } : null;
       }
       case 'climate_heat_setpoint':
-        return { 'therm:heatsetpoint': parseFloat(payload) };
+        return { [Thermostat.ATTR_HEATSETPOINT]: parseFloat(payload) };
       case 'climate_cool_setpoint':
-        return { 'therm:coolsetpoint': parseFloat(payload) };
+        return { [Thermostat.ATTR_COOLSETPOINT]: parseFloat(payload) };
       default:
         return null;
     }
