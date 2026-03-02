@@ -12,6 +12,7 @@ export interface Config {
   arcusUsername: string | undefined;
   arcusPassword: string | undefined;
   arcusAuthToken: string | undefined;
+  arcusApiKey: string | undefined;
   arcusPlaceId: string | undefined;
 }
 
@@ -30,6 +31,7 @@ export function loadConfig(): Config {
     arcusUsername: process.env.ARCUS_USERNAME,
     arcusPassword: process.env.ARCUS_PASSWORD,
     arcusAuthToken: process.env.ARCUS_AUTH_TOKEN,
+    arcusApiKey: process.env.ARCUS_API_KEY,
     arcusPlaceId: process.env.ARCUS_PLACE_ID,
   };
 }

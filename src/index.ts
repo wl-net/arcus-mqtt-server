@@ -24,13 +24,19 @@ async function main() {
       console.error('[Main] ARCUS_BRIDGE_URL is required when not in mock mode');
       process.exit(1);
     }
-    if (!config.arcusPlaceId) {
-      console.error('[Main] ARCUS_PLACE_ID is required when not in mock mode');
-      process.exit(1);
-    }
-    if (!config.arcusAuthToken && !(config.arcusUsername && config.arcusPassword)) {
-      console.error('[Main] Either ARCUS_AUTH_TOKEN or ARCUS_USERNAME + ARCUS_PASSWORD is required');
-      process.exit(1);
+    if (config.arcusApiKey) {
+      // API-server mode: only bridge URL + API key needed, place ID is optional
+      console.log('[Main] Using api-server mode (ARCUS_API_KEY)');
+    } else {
+      // Client-bridge mode: need credentials + place ID
+      if (!config.arcusPlaceId) {
+        console.error('[Main] ARCUS_PLACE_ID is required when not using ARCUS_API_KEY');
+        process.exit(1);
+      }
+      if (!config.arcusAuthToken && !(config.arcusUsername && config.arcusPassword)) {
+        console.error('[Main] Either ARCUS_AUTH_TOKEN, ARCUS_API_KEY, or ARCUS_USERNAME + ARCUS_PASSWORD is required');
+        process.exit(1);
+      }
     }
     client = new PlatformArcusClient(config);
   }

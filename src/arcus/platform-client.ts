@@ -84,14 +84,18 @@ export class PlatformArcusClient implements ArcusClient {
     };
   }
 
+  private get placeId(): string {
+    const id = this.config.arcusPlaceId;
+    if (!id) throw new Error('No place ID configured');
+    return id;
+  }
+
   private get subalarmDestination(): string {
-    if (!this.config.arcusPlaceId) throw new Error('No place ID configured');
-    return `SERV:subalarm:${this.config.arcusPlaceId}`;
+    return `SERV:subalarm:${this.placeId}`;
   }
 
   private get subsecurityDestination(): string {
-    if (!this.config.arcusPlaceId) throw new Error('No place ID configured');
-    return `SERV:subsecurity:${this.config.arcusPlaceId}`;
+    return `SERV:subsecurity:${this.placeId}`;
   }
 
   private handleAlarmEvent(): void {
@@ -107,30 +111,47 @@ export class PlatformArcusClient implements ArcusClient {
   }
 
   async connect(): Promise<void> {
-    const { arcusBridgeUrl, arcusAuthToken, arcusUsername, arcusPassword, arcusPlaceId } = this.config;
+    const { arcusBridgeUrl, arcusApiKey, arcusAuthToken, arcusUsername, arcusPassword } = this.config;
 
     if (!arcusBridgeUrl) throw new Error('ARCUS_BRIDGE_URL is required');
-    if (!arcusPlaceId) throw new Error('ARCUS_PLACE_ID is required');
 
-    // Login if we don't have a token
-    if (arcusAuthToken) {
-      console.log('[PlatformClient] Using provided auth token');
-    } else if (arcusUsername && arcusPassword) {
-      console.log(`[PlatformClient] Logging in as ${arcusUsername}`);
-      await this.bridge.login(arcusBridgeUrl, arcusUsername, arcusPassword);
+    if (arcusApiKey) {
+      // API-server mode: connect with API key, place is auto-set by server
+      console.log('[PlatformClient] Connecting via api-server with API key');
+      const session = await this.bridge.connectApiServer(arcusBridgeUrl, arcusApiKey);
+
+      // Auto-detect placeId from session if not explicitly configured
+      if (!this.config.arcusPlaceId) {
+        if (session.places.length === 0) {
+          throw new Error('No places found in session — set ARCUS_PLACE_ID manually');
+        }
+        this.config.arcusPlaceId = session.places[0].placeId;
+        console.log(`[PlatformClient] Auto-detected place: ${this.config.arcusPlaceId}`);
+      }
+      this.bridge.setActivePlace(this.config.arcusPlaceId!);
+      console.log('[PlatformClient] Connected via api-server');
     } else {
-      throw new Error('Either ARCUS_AUTH_TOKEN or ARCUS_USERNAME + ARCUS_PASSWORD is required');
+      // Client-bridge mode: login → connect → SetActivePlace
+      if (!this.config.arcusPlaceId) throw new Error('ARCUS_PLACE_ID is required');
+
+      if (arcusAuthToken) {
+        console.log('[PlatformClient] Using provided auth token');
+      } else if (arcusUsername && arcusPassword) {
+        console.log(`[PlatformClient] Logging in as ${arcusUsername}`);
+        await this.bridge.login(arcusBridgeUrl, arcusUsername, arcusPassword);
+      } else {
+        throw new Error('Either ARCUS_AUTH_TOKEN or ARCUS_USERNAME + ARCUS_PASSWORD is required');
+      }
+
+      console.log(`[PlatformClient] Connecting to ${arcusBridgeUrl}`);
+      await this.bridge.connect(arcusBridgeUrl, arcusAuthToken ?? undefined);
+
+      const placeId = this.config.arcusPlaceId;
+      this.bridge.setActivePlace(placeId);
+      console.log(`[PlatformClient] Setting active place: ${placeId}`);
+      await this.bridge.sendRequest('SERV:sess:', 'sess:SetActivePlace', { placeId });
+      console.log('[PlatformClient] Connected and active place set');
     }
-
-    // Connect WebSocket
-    console.log(`[PlatformClient] Connecting to ${arcusBridgeUrl}`);
-    await this.bridge.connect(arcusBridgeUrl, arcusAuthToken ?? undefined);
-
-    // Set active place
-    this.bridge.setActivePlace(arcusPlaceId);
-    console.log(`[PlatformClient] Setting active place: ${arcusPlaceId}`);
-    await this.bridge.sendRequest('SERV:sess:', 'sess:SetActivePlace', { placeId: arcusPlaceId });
-    console.log('[PlatformClient] Connected and active place set');
   }
 
   async listDevices(): Promise<ArcusDevice[]> {
@@ -184,9 +205,8 @@ export class PlatformArcusClient implements ArcusClient {
   }
 
   async listScenes(): Promise<SceneInfo[]> {
-    if (!this.config.arcusPlaceId) throw new Error('No place ID configured');
     const resp = await this.bridge.sendRequest('SERV:scene:', 'scene:ListScenes', {
-      placeId: this.config.arcusPlaceId,
+      placeId: this.placeId,
     });
     const rawScenes = resp.payload.attributes.scenes as Record<string, unknown>[] | undefined;
     if (!rawScenes || !Array.isArray(rawScenes)) {

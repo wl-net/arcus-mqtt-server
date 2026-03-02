@@ -64,6 +64,9 @@ export class BridgeClient {
   private _events: BridgeEvent[] = [];
 
   private _baseUrl: string | null = null;
+  private _wsPath = '/androidbus';
+  private _authHeaders: Record<string, string> = {};
+  private _autoPlace = false;
   private _reconnecting = false;
   private _reconnectAttempt = 0;
   private _intentionalClose = false;
@@ -148,19 +151,35 @@ export class BridgeClient {
 
     this._baseUrl = baseUrl;
     this.token = authToken;
+    this._wsPath = '/androidbus';
+    this._authHeaders = { Cookie: `irisAuthToken=${authToken}` };
+    this._autoPlace = false;
     this._intentionalClose = false;
 
     return this._doConnect();
   }
 
+  connectApiServer(baseUrl: string, apiKey: string): Promise<SessionInfo> {
+    this._baseUrl = baseUrl;
+    this._wsPath = '/apibus';
+    this._authHeaders = { Authorization: `Bearer ${apiKey}` };
+    this._autoPlace = true;
+    this._intentionalClose = false;
+
+    return this._doConnect();
+  }
+
+  get autoPlace(): boolean {
+    return this._autoPlace;
+  }
+
   private _doConnect(): Promise<SessionInfo> {
-    const authToken = this.token!;
-    const wsUrl = this._baseUrl!.replace(/^http/, 'ws') + '/androidbus';
+    const wsUrl = this._baseUrl!.replace(/^http/, 'ws') + this._wsPath;
     dbg(`WebSocket connecting to ${wsUrl}`);
 
     return new Promise((resolve, reject) => {
       this.ws = new WebSocket(wsUrl, {
-        headers: { Cookie: `irisAuthToken=${authToken}` },
+        headers: { ...this._authHeaders },
       });
 
       this.ws.on('open', () => {
@@ -197,8 +216,8 @@ export class BridgeClient {
           };
           log(`Session created — personId=${this._session.personId}, ${this._session.places.length} place(s)`);
 
-          // Re-set active place after reconnect
-          if (this._reconnecting && this._activePlaceId) {
+          // Re-set active place after reconnect (skip for api-server mode)
+          if (this._reconnecting && this._activePlaceId && !this._autoPlace) {
             const placeId = this._activePlaceId;
             log(`Reconnected — re-setting active place ${placeId}`);
             this.sendRequest('SERV:sess:', 'sess:SetActivePlace', { placeId }).then(
@@ -250,7 +269,7 @@ export class BridgeClient {
         this._session = null;
 
         // Auto-reconnect unless intentionally closed
-        if (!this._intentionalClose && this._baseUrl && this.token) {
+        if (!this._intentionalClose && this._baseUrl && (this.token || this._autoPlace)) {
           this._scheduleReconnect();
         }
       });
