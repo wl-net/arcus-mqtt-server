@@ -9,11 +9,12 @@ Arcus Platform ──► Arcus MQTT Server ──► Embedded MQTT Broker ──
   (or mock data)     (sync + mappers)       (Aedes, port 1883)      (auto-discovery)
 ```
 
-1. Connects to the Arcus platform (or uses mock devices for testing)
+1. Connects to the Arcus platform via WebSocket (or uses mock devices for testing)
 2. Publishes HA MQTT Discovery configs so devices appear automatically
 3. Publishes device state as retained JSON messages
 4. Subscribes to command topics and forwards commands back to Arcus
-5. Polls periodically and handles real-time events for instant updates
+5. Polls periodically and handles real-time WebSocket events for instant updates
+6. Auto-reconnects with exponential backoff on connection loss
 
 ## Supported Device Types
 
@@ -49,13 +50,34 @@ ARCUS_MOCK=1 npm start
 
 Starts the broker with 13 mock devices (switches, lights, thermostat, sensors, lock, camera, etc.). Point Home Assistant's MQTT integration at `localhost:1883` and devices appear automatically.
 
-### Platform Mode
+### API-Server Mode
+
+Connects to a local Arcus API server using an API key. Place ID is auto-detected from the session.
+
+```bash
+ARCUS_BRIDGE_URL=https://your-bridge-url \
+ARCUS_API_KEY=your-api-key \
+npm start
+```
+
+### Client-Bridge Mode
+
+Connects directly to the Arcus platform using user credentials. Requires a place ID.
 
 ```bash
 ARCUS_BRIDGE_URL=https://your-bridge-url \
 ARCUS_PLACE_ID=your-place-id \
 ARCUS_USERNAME=your-username \
 ARCUS_PASSWORD=your-password \
+npm start
+```
+
+You can also use a pre-obtained auth token instead of username/password:
+
+```bash
+ARCUS_BRIDGE_URL=https://your-bridge-url \
+ARCUS_PLACE_ID=your-place-id \
+ARCUS_AUTH_TOKEN=your-token \
 npm start
 ```
 
@@ -74,11 +96,12 @@ All configuration is via environment variables:
 | `POLL_INTERVAL_MS` | `30000` | Device polling interval (ms) |
 | `HA_DISCOVERY_PREFIX` | `homeassistant` | HA MQTT Discovery topic prefix |
 | `DEVICE_ID_PREFIX` | `arcus` | Prefix for device IDs in topics |
-| `ARCUS_BRIDGE_URL` | — | Arcus platform bridge URL |
-| `ARCUS_USERNAME` | — | Arcus platform username |
-| `ARCUS_PASSWORD` | — | Arcus platform password |
-| `ARCUS_AUTH_TOKEN` | — | Alternative to username/password |
-| `ARCUS_PLACE_ID` | — | Arcus place/location ID |
+| `ARCUS_BRIDGE_URL` | — | Arcus platform WebSocket URL |
+| `ARCUS_API_KEY` | — | API key (api-server mode) |
+| `ARCUS_USERNAME` | — | Platform username (client-bridge mode) |
+| `ARCUS_PASSWORD` | — | Platform password (client-bridge mode) |
+| `ARCUS_AUTH_TOKEN` | — | Auth token, alternative to username/password |
+| `ARCUS_PLACE_ID` | — | Place ID (required for client-bridge, optional for api-server) |
 
 ## Home Assistant Setup
 
@@ -99,9 +122,10 @@ src/
 ├── sync.ts               # Sync loop (polling + events)
 ├── arcus/
 │   ├── types.ts          # ArcusDevice, ArcusClient interface
+│   ├── capabilities.ts   # Arcus capability constants
 │   ├── client.ts         # MockArcusClient
 │   ├── platform-client.ts # PlatformArcusClient (real API)
-│   ├── bridge-client.ts  # WebSocket bridge to Arcus
+│   ├── bridge-client.ts  # WebSocket bridge (api-server + client-bridge modes)
 │   └── mock-data.ts      # 13 mock devices
 ├── ha/
 │   ├── topics.ts         # MQTT topic utilities
