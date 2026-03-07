@@ -20,14 +20,17 @@ export const lightMapper: Mapper = {
       {
         topic: discoveryTopic(config, 'light', objectId),
         payload: {
-          name: null,
+          name: device.name,
           unique_id: objectId,
           object_id: objectId,
-          schema: 'json',
           state_topic: stateTopic(config, device.address),
+          state_value_template: '{{ value_json.light_state }}',
           command_topic: commandTopic(config, device.address, 'light'),
-          value_template: '{{ value_json.light | to_json }}',
-          brightness: true,
+          payload_on: 'ON',
+          payload_off: 'OFF',
+          brightness_state_topic: stateTopic(config, device.address),
+          brightness_value_template: '{{ value_json.light_brightness }}',
+          brightness_command_topic: commandTopic(config, device.address, 'light_brightness'),
           brightness_scale: 100,
           device: buildDeviceInfo(config, device),
           availability: buildAvailability(config, device),
@@ -38,10 +41,8 @@ export const lightMapper: Mapper = {
 
   buildState(_config: Config, device: ArcusDevice): Record<string, unknown> {
     return {
-      light: {
-        state: device.attributes[Switch.ATTR_STATE] === 'ON' ? 'ON' : 'OFF',
-        brightness: device.attributes[Dimmer.ATTR_BRIGHTNESS] ?? 0,
-      },
+      light_state: device.attributes[Switch.ATTR_STATE] === 'ON' ? 'ON' : 'OFF',
+      light_brightness: device.attributes[Dimmer.ATTR_BRIGHTNESS] ?? 0,
     };
   },
 
@@ -51,19 +52,17 @@ export const lightMapper: Mapper = {
     entity: string,
     payload: string,
   ): ArcusAttributes | null {
-    if (entity !== 'light') return null;
-    const cmd = JSON.parse(payload) as { state?: string; brightness?: number };
-    const attrs: ArcusAttributes = {};
-    if (cmd.state !== undefined) {
-      attrs[Switch.ATTR_STATE] = cmd.state === 'ON' ? 'ON' : 'OFF';
+    if (entity === 'light') {
+      return { [Switch.ATTR_STATE]: payload === 'ON' ? 'ON' : 'OFF' };
     }
-    if (cmd.brightness !== undefined) {
-      attrs[Dimmer.ATTR_BRIGHTNESS] = cmd.brightness;
-      // Turn on if setting brightness > 0
-      if (cmd.brightness > 0 && cmd.state === undefined) {
+    if (entity === 'light_brightness') {
+      const brightness = parseInt(payload, 10);
+      const attrs: ArcusAttributes = { [Dimmer.ATTR_BRIGHTNESS]: brightness };
+      if (brightness > 0) {
         attrs[Switch.ATTR_STATE] = 'ON';
       }
+      return attrs;
     }
-    return Object.keys(attrs).length > 0 ? attrs : null;
+    return null;
   },
 };

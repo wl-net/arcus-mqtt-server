@@ -20,7 +20,7 @@ export const switchMapper: Mapper = {
       {
         topic: discoveryTopic(config, 'switch', objectId),
         payload: {
-          name: null, // Use device name
+          name: device.name,
           unique_id: objectId,
           object_id: objectId,
           state_topic: stateTopic(config, device.address),
