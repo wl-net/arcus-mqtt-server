@@ -64,7 +64,7 @@ export class BridgeClient {
   private _events: BridgeEvent[] = [];
 
   private _baseUrl: string | null = null;
-  private _wsPath = '/androidbus';
+  private _wsPath = '/websocket';
   private _authHeaders: Record<string, string> = {};
   private _autoPlace = false;
   private _reconnecting = false;
@@ -151,7 +151,7 @@ export class BridgeClient {
 
     this._baseUrl = baseUrl;
     this.token = authToken;
-    this._wsPath = '/androidbus';
+    this._wsPath = '/websocket';
     this._authHeaders = { Cookie: `irisAuthToken=${authToken}` };
     this._autoPlace = false;
     this._intentionalClose = false;
