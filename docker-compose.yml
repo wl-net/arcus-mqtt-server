@@ -1,0 +1,11 @@
+services:
+  arcus-mqtt:
+    build: .
+    ports:
+      - "1883:1883"
+    environment:
+      - ARCUS_MOCK=1
+      # - ARCUS_BRIDGE_URL=ws://...
+      # - ARCUS_USERNAME=
+      # - ARCUS_PASSWORD=
+    restart: unless-stopped
