@@ -120,6 +120,12 @@ export async function startSync(
 
     // Re-publish state immediately
     publishState(broker, config, device);
+
+    // Fire any event-driven mappers (e.g. button triggers)
+    for (const mapper of matchingMappers(device)) {
+      mapper.onEvent?.(broker, config, device, attributes);
+    }
+
     console.log(`[Sync] Real-time update: ${device.name} (${address})`);
   });
 
