@@ -46,7 +46,7 @@ Arcus Platform ──► Arcus MQTT Server ──► MQTT broker ◄── Home 
 
 ## Install as a Home Assistant App
 
-On Home Assistant OS, the server runs as a Home Assistant app (formerly add-on) from a prebuilt image, alongside the Mosquitto broker app.
+On Home Assistant OS and Supervised installs, the server runs as a Home Assistant app (formerly add-on) from a prebuilt image, alongside the Mosquitto broker app.
 
 1. Install the **Mosquitto broker** app and start it. Home Assistant then offers to set up the MQTT integration: accept it
 2. Go to **Settings → Apps → Install app**, open the **⋮** menu, choose **Repositories** and add `https://github.com/wl-net/arcus-mqtt-server`
@@ -70,7 +70,7 @@ Devices, entities, names, areas and automations carry over. Don't delete and re-
 
 ## Install with Docker
 
-If Home Assistant runs in Docker, there are no apps. `docker-compose.yml` runs the server next to it, with its own Mosquitto broker.
+If Home Assistant is a Container install, with no **Apps** menu, use Docker instead. `docker-compose.yml` runs the server next to it, with its own Mosquitto broker.
 
 1. `git clone https://github.com/wl-net/arcus-mqtt-server && cd arcus-mqtt-server`
 2. Copy `.env.example` to `.env`, and set `ARCUS_BRIDGE_URL` and the settings for your mode (see [Configuration](#configuration))
