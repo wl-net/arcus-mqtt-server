@@ -10,6 +10,12 @@ export function isAttributeValue(value: unknown): value is ArcusAttributeValue {
   return Array.isArray(value) && value.every(v => typeof v === 'string');
 }
 
+/** A capability method call on a device, e.g. irrcont:WaterNowV2 with { zone: 'z1', duration: 10 } */
+export interface ArcusMethodCall {
+  method: string;
+  args: Record<string, string | number>;
+}
+
 /** Capabilities are identified by their namespace prefix (e.g. "swit", "dim", "therm") */
 export type ArcusCapability = string;
 

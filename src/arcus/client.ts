@@ -1,4 +1,5 @@
-import type { ArcusDevice, ArcusAttributes, AlarmState, SceneInfo } from './types.js';
+import type { ArcusDevice, ArcusAttributes, ArcusMethodCall, AlarmState, SceneInfo } from './types.js';
+import { IrrigationController, IrrigationZone } from './capabilities.js';
 import { createMockDevices, createMockHub } from './mock-data.js';
 
 export interface ArcusClient {
@@ -10,6 +11,9 @@ export interface ArcusClient {
 
   /** Send a command (set attributes) to a device */
   sendCommand(address: string, attributes: ArcusAttributes): Promise<void>;
+
+  /** Call a capability method on a device, for commands that aren't attribute changes */
+  callMethod(address: string, call: ArcusMethodCall): Promise<void>;
 
   /** Start listening for real-time device events */
   connect(): Promise<void>;
@@ -82,6 +86,25 @@ export class MockArcusClient implements ArcusClient {
     // Notify event handlers of the change
     for (const handler of this.eventHandlers) {
       handler(address, attributes);
+    }
+  }
+
+  async callMethod(address: string, call: ArcusMethodCall): Promise<void> {
+    console.log(`[MockArcusClient] ${call.method} → ${address}:`, call.args);
+    // Like the irrigation drivers: watering starts or stops right away
+    const zone = String(call.args.zone);
+    if (call.method === IrrigationController.CMD_WATERNOWV2) {
+      await this.sendCommand(address, {
+        [`${IrrigationZone.ATTR_ZONESTATE}:${zone}`]: IrrigationZone.ZONESTATE_WATERING,
+        [`${IrrigationZone.ATTR_WATERINGDURATION}:${zone}`]: Number(call.args.duration),
+        [IrrigationController.ATTR_CONTROLLERSTATE]: IrrigationController.CONTROLLERSTATE_WATERING,
+      });
+    } else if (call.method === IrrigationController.CMD_CANCELV2) {
+      await this.sendCommand(address, {
+        [`${IrrigationZone.ATTR_ZONESTATE}:${zone}`]: IrrigationZone.ZONESTATE_NOT_WATERING,
+        [`${IrrigationZone.ATTR_WATERINGDURATION}:${zone}`]: 0,
+        [IrrigationController.ATTR_CONTROLLERSTATE]: IrrigationController.CONTROLLERSTATE_NOT_WATERING,
+      });
     }
   }
 

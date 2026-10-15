@@ -8,6 +8,8 @@ import { climateMapper } from '../src/mappers/climate.js';
 import { valveMapper } from '../src/mappers/valve.js';
 import { shadeMapper } from '../src/mappers/shade.js';
 import { lightMapper } from '../src/mappers/light.js';
+import { ventMapper } from '../src/mappers/vent.js';
+import { irrigationMapper } from '../src/mappers/irrigation.js';
 import { matchingMappers } from '../src/mappers/index.js';
 import type { Mapper } from '../src/mappers/index.js';
 import type { ArcusAttributes } from '../src/arcus/types.js';
@@ -292,6 +294,90 @@ describe('light mapper', () => {
   it('clamps brightness and turns the light on when brightening', () => {
     assert.deepEqual(cmd('light_brightness', '140'), { 'dim:brightness': 100, 'swit:state': 'ON' });
     assert.deepEqual(cmd('light_brightness', '0'), { 'dim:brightness': 0 });
+  });
+});
+
+describe('vent mapper', () => {
+  const vent = (attrs: ArcusAttributes = {}) =>
+    makeDevice('DRIV:dev:vt1', ['vent'], { 'vent:level': 40, 'vent:ventstate': 'OK', ...attrs });
+  const cmd = (entity: string, payload: string) => ventMapper.handleCommand(config, vent(), entity, payload);
+
+  it('maps a vent to a positionable damper with an obstruction sensor', () => {
+    const disc = discoveryById(ventMapper, vent());
+    assert.equal(disc.get('vt1_vent')?.device_class, 'damper');
+    assert.equal(disc.get('vt1_vent')?.payload_stop, null);
+    assert.equal(disc.get('vt1_vent_obstruction')?.device_class, 'problem');
+    assert.deepEqual(ventMapper.buildState(config, vent()), { vent_position: 40, vent_obstruction: 'OFF' });
+    assert.equal(ventMapper.buildState(config, vent({ 'vent:ventstate': 'OBSTRUCTION' })).vent_obstruction, 'ON');
+  });
+
+  it('adds a duct pressure sensor only when the vent reports pressure', () => {
+    assert.equal(discoveryById(ventMapper, vent()).has('vt1_vent_pressure'), false);
+    const withPressure = vent({ 'vent:airpressure': 101.2 });
+    assert.equal(discoveryById(ventMapper, withPressure).get('vt1_vent_pressure')?.unit_of_measurement, 'kPa');
+    assert.equal(ventMapper.buildState(config, withPressure).vent_pressure, 101.2);
+  });
+
+  it('opens, closes and moves to a position through the level', () => {
+    assert.deepEqual(cmd('vent', 'OPEN'), { 'vent:level': 100 });
+    assert.deepEqual(cmd('vent', 'CLOSE'), { 'vent:level': 0 });
+    assert.deepEqual(cmd('vent_position', '25'), { 'vent:level': 25 });
+    assert.deepEqual(cmd('vent_position', '-5'), { 'vent:level': 0 });
+    assert.equal(cmd('vent_position', 'abc'), null);
+  });
+});
+
+describe('irrigation mapper', () => {
+  const zone = (z: string, num: number, extra: ArcusAttributes = {}): ArcusAttributes => ({
+    [`irr:zonenum:${z}`]: num,
+    [`irr:zoneState:${z}`]: 'NOT_WATERING',
+    [`irr:defaultDuration:${z}`]: 10,
+    ...extra,
+  });
+  const controller = (attrs: ArcusAttributes) => makeDevice('DRIV:dev:ir1', ['irrcont', 'irr'], {
+    'irrcont:minirrigationtime': 1,
+    'irrcont:maxirrigationtime': 60,
+    ...attrs,
+  });
+  const single = controller(zone('z1', 1));
+  const multi = controller({ ...zone('z2', 2), ...zone('z1', 1, { 'irr:zonename:z1': 'Front Beds' }) });
+
+  it('names a single-zone timer after the device', () => {
+    const disc = discoveryById(irrigationMapper, single);
+    assert.equal(disc.get('ir1_zone_z1')?.name, null);
+    assert.equal(disc.get('ir1_zone_z1')?.state_open, 'WATERING');
+    assert.equal(disc.get('ir1_zone_z1_duration')?.name, 'Watering time');
+    assert.equal(disc.get('ir1_zone_z1_duration')?.max, 60);
+  });
+
+  it('gives each zone of a multi-zone controller its own valve, by name or number', () => {
+    const valves = irrigationMapper.buildDiscovery(config, multi).filter(d => d.topic.startsWith('homeassistant/valve/'));
+    assert.deepEqual(valves.map(d => d.payload.name), ['Front Beds', 'Zone 2']);
+  });
+
+  it('reports each zone and its watering time', () => {
+    const watering = controller(zone('z1', 1, { 'irr:zoneState:z1': 'WATERING', 'irr:defaultDuration:z1': 15 }));
+    assert.deepEqual(irrigationMapper.buildState(config, watering), { zone_z1: 'WATERING', zone_z1_duration: 15 });
+  });
+
+  it('waters a zone for its watering time, and stops it', () => {
+    assert.deepEqual(irrigationMapper.handleMethodCommand?.(config, multi, 'zone_z2', 'OPEN'),
+      { method: 'irrcont:WaterNowV2', args: { zone: 'z2', duration: 10 } });
+    assert.deepEqual(irrigationMapper.handleMethodCommand?.(config, multi, 'zone_z2', 'CLOSE'),
+      { method: 'irrcont:CancelV2', args: { zone: 'z2' } });
+    assert.equal(irrigationMapper.handleCommand(config, multi, 'zone_z2', 'OPEN'), null);
+  });
+
+  it('sets the watering time within the controller limits', () => {
+    assert.deepEqual(irrigationMapper.handleCommand(config, single, 'zone_z1_duration', '20'), { 'irr:defaultDuration:z1': 20 });
+    assert.deepEqual(irrigationMapper.handleCommand(config, single, 'zone_z1_duration', '500'), { 'irr:defaultDuration:z1': 60 });
+    assert.equal(irrigationMapper.handleCommand(config, single, 'zone_z1_duration', 'abc'), null);
+    assert.equal(irrigationMapper.handleMethodCommand?.(config, single, 'zone_z1_duration', 'OPEN'), null);
+  });
+
+  it('ignores zones the controller does not have', () => {
+    assert.equal(irrigationMapper.handleMethodCommand?.(config, single, 'zone_z9', 'OPEN'), null);
+    assert.equal(irrigationMapper.handleCommand(config, single, 'zone_z9_duration', '5'), null);
   });
 });
 

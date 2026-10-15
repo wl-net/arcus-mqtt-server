@@ -37,6 +37,14 @@ export function setupCommandHandler(
         });
         return;
       }
+      const call = mapper.handleMethodCommand?.(config, device, entity, payload);
+      if (call) {
+        console.log(`[Command] ${device.address} ${entity} ← ${payload}`);
+        client.callMethod(device.address, call).catch(err => {
+          console.error(`[Command] ${call.method} failed on ${device.address}:`, err);
+        });
+        return;
+      }
     }
 
     console.warn(`[Command] No mapper handled: ${devId}/${entity}`);

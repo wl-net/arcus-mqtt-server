@@ -4,7 +4,8 @@ import {
   RelativeHumidity, Contact, Motion, DoorLock, LeakH2O, Button,
   MotorizedDoor, Smoke, CarbonMonoxide, Glass, Tilt, PowerUse,
   Hub, HubConnection, HubPower, DeviceAdvanced,
-  Color, ColorTemperature, Light, Valve, Shade,
+  Color, ColorTemperature, Light, Valve, Shade, Vent,
+  IrrigationController, IrrigationZone,
 } from './capabilities.js';
 
 export function createMockDevices(): ArcusDevice[] {
@@ -249,6 +250,51 @@ export function createMockDevices(): ArcusDevice[] {
         [DevicePower.ATTR_SOURCE]: DevicePower.SOURCE_BATTERY,
         [DevicePower.ATTR_BATTERY]: 75,
         [Device.ATTR_DEVTYPEHINT]: 'Shade',
+      },
+    },
+
+    // --- Smart Vent ---
+    {
+      address: 'DRIV:dev:vent-001',
+      name: 'Bedroom Vent',
+      type: 'Smart Vent',
+      caps: new Set([Base.NAMESPACE, Device.NAMESPACE, DevicePower.NAMESPACE, Temperature.NAMESPACE, Vent.NAMESPACE]),
+      attributes: {
+        [Vent.ATTR_LEVEL]: 50,
+        [Vent.ATTR_VENTSTATE]: Vent.VENTSTATE_OK,
+        [Vent.ATTR_AIRPRESSURE]: 101.2,
+        [Temperature.ATTR_TEMPERATURE]: 22.0,
+        [DevicePower.ATTR_SOURCE]: DevicePower.SOURCE_BATTERY,
+        [DevicePower.ATTR_BATTERY]: 90,
+        [Device.ATTR_DEVTYPEHINT]: 'vent',
+      },
+    },
+
+    // --- Irrigation Controller (two zones) ---
+    {
+      address: 'DRIV:dev:irrigation-001',
+      name: 'Garden Timer',
+      type: 'Irrigation Timer',
+      caps: new Set([
+        Base.NAMESPACE, Device.NAMESPACE, DevicePower.NAMESPACE,
+        IrrigationController.NAMESPACE, IrrigationZone.NAMESPACE,
+      ]),
+      attributes: {
+        [IrrigationController.ATTR_NUMZONES]: 2,
+        [IrrigationController.ATTR_CONTROLLERSTATE]: IrrigationController.CONTROLLERSTATE_NOT_WATERING,
+        [IrrigationController.ATTR_MINIRRIGATIONTIME]: 1,
+        [IrrigationController.ATTR_MAXIRRIGATIONTIME]: 240,
+        [`${IrrigationZone.ATTR_ZONENUM}:z1`]: 1,
+        [`${IrrigationZone.ATTR_ZONENAME}:z1`]: 'Front Beds',
+        [`${IrrigationZone.ATTR_ZONESTATE}:z1`]: IrrigationZone.ZONESTATE_NOT_WATERING,
+        [`${IrrigationZone.ATTR_DEFAULTDURATION}:z1`]: 10,
+        [`${IrrigationZone.ATTR_ZONENUM}:z2`]: 2,
+        [`${IrrigationZone.ATTR_ZONENAME}:z2`]: 'Vegetables',
+        [`${IrrigationZone.ATTR_ZONESTATE}:z2`]: IrrigationZone.ZONESTATE_NOT_WATERING,
+        [`${IrrigationZone.ATTR_DEFAULTDURATION}:z2`]: 15,
+        [DevicePower.ATTR_SOURCE]: DevicePower.SOURCE_BATTERY,
+        [DevicePower.ATTR_BATTERY]: 80,
+        [Device.ATTR_DEVTYPEHINT]: 'Irrigation',
       },
     },
 

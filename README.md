@@ -34,8 +34,11 @@ Arcus Platform ──► Arcus MQTT Server ──► MQTT broker ◄── Home 
 | Power meter | `sensor` | Power (W) and cumulative energy (Wh) |
 | Hub | `binary_sensor`, `sensor` | Hub connectivity, mains power (off = running on battery), battery level |
 | Door lock | `lock` | Lock/unlock, locking/unlocking |
+| Garage door opener | `cover` (garage) | Open/close, opening/closing |
 | Water valve | `valve` (water) | Open/close, opening/closing |
+| Irrigation controller | `valve` (water) + `number` per zone | Water or stop each zone; watering time per zone, used when a zone is opened |
 | Shade | `cover` (shade) | Open/close and set position |
+| Vent | `cover` (damper), `binary_sensor`, `sensor` | Open/close and set position; obstruction; duct air pressure |
 | Temperature | `sensor` | Temperature reading |
 | Humidity | `sensor` | Humidity reading |
 | Battery | `sensor` | Battery percentage |
@@ -194,11 +197,14 @@ src/
     ├── climate.ts        # therm → climate
     ├── binary-sensor.ts  # cont/mot/leakh2o/smoke/co/glass/tilt → binary_sensor
     ├── lock.ts           # doorlock → lock
+    ├── cover.ts          # motdoor → cover (garage)
     ├── sensor.ts         # temp/humid/battery/pow → sensor
     ├── device-trigger.ts # but → device_automation
     ├── hub.ts            # hub connectivity/power/battery → binary_sensor, sensor
     ├── valve.ts          # valv → valve
-    └── shade.ts          # shade → cover
+    ├── shade.ts          # shade → cover
+    ├── vent.ts           # vent → cover (damper), obstruction, pressure
+    └── irrigation.ts     # irrcont/irr → valve + watering time per zone
 ```
 
 ### Mapper Pattern
@@ -209,6 +215,8 @@ Each device type is handled by a mapper that implements four methods:
 - **`buildDiscovery(config, device)`** — generate HA MQTT Discovery config(s)
 - **`buildState(config, device)`** — extract state from device attributes
 - **`handleCommand(config, device, entity, payload)`** — translate HA command → Arcus attributes
+
+Mappers whose commands are Arcus method calls rather than attribute changes, such as starting irrigation, also implement **`handleMethodCommand`**.
 
 A single device can match multiple mappers. For example, a thermostat matches both the climate mapper and the sensor mapper (for temperature/humidity readings). State from all matching mappers is merged into one JSON topic per device.
 

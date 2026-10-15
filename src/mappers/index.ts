@@ -1,5 +1,5 @@
 import type { Mqtt } from '../mqtt.js';
-import type { ArcusDevice, ArcusAttributes } from '../arcus/types.js';
+import type { ArcusDevice, ArcusAttributes, ArcusMethodCall } from '../arcus/types.js';
 import type { Config } from '../config.js';
 import type { HADiscoveryConfig } from '../ha/discovery.js';
 
@@ -21,6 +21,17 @@ export interface Mapper {
     payload: string,
   ): ArcusAttributes | null;
 
+  /**
+   * Handle a command from HA that Arcus takes as a method call rather than
+   * attribute changes (e.g. starting irrigation). Optional.
+   */
+  handleMethodCommand?(
+    config: Config,
+    device: ArcusDevice,
+    entity: string,
+    payload: string,
+  ): ArcusMethodCall | null;
+
   /** Handle a real-time event (e.g. publish a trigger). Optional. */
   onEvent?(
     mqtt: Mqtt,
@@ -41,6 +52,8 @@ import { deviceTriggerMapper } from './device-trigger.js';
 import { hubMapper } from './hub.js';
 import { valveMapper } from './valve.js';
 import { shadeMapper } from './shade.js';
+import { ventMapper } from './vent.js';
+import { irrigationMapper } from './irrigation.js';
 
 /** All registered mappers, in priority order */
 export const mappers: Mapper[] = [
@@ -55,6 +68,8 @@ export const mappers: Mapper[] = [
   hubMapper,
   valveMapper,
   shadeMapper,
+  ventMapper,
+  irrigationMapper,
 ];
 
 /** Get all mappers that match a device */

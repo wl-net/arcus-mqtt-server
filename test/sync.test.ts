@@ -2,7 +2,7 @@ import { describe, it, before, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { startSync } from '../src/sync.js';
 import type { ArcusClient } from '../src/arcus/client.js';
-import type { ArcusDevice, ArcusAttributes, AlarmState, SceneInfo } from '../src/arcus/types.js';
+import type { ArcusDevice, ArcusAttributes, ArcusMethodCall, AlarmState, SceneInfo } from '../src/arcus/types.js';
 import { FakeMqtt, makeDevice, testConfig, until, quietConsole } from './helpers.js';
 
 /** A scriptable ArcusClient: tests change what it returns and fire its events */
@@ -31,6 +31,10 @@ class FakeClient implements ArcusClient {
   readonly commands: Array<{ address: string; attributes: ArcusAttributes }> = [];
   async sendCommand(address: string, attributes: ArcusAttributes): Promise<void> {
     this.commands.push({ address, attributes });
+  }
+  readonly methodCalls: Array<{ address: string; call: ArcusMethodCall }> = [];
+  async callMethod(address: string, call: ArcusMethodCall): Promise<void> {
+    this.methodCalls.push({ address, call });
   }
   onDeviceEvent(handler: (address: string, attributes: ArcusAttributes) => void): void {
     this.deviceHandlers.push(handler);
@@ -184,6 +188,20 @@ describe('sync', () => {
     const { broker, client } = await start();
     broker.deliver('arcus/lock-1/lock/set', 'UNLOCK');
     assert.deepEqual(client.commands, [{ address: 'DRIV:dev:lock-1', attributes: { 'doorlock:lockstate': 'UNLOCKED' } }]);
+  });
+
+  it('sends commands that Arcus takes as method calls', async () => {
+    const { broker, client } = await start(c => {
+      c.devices.push(makeDevice('DRIV:dev:timer-1', ['irrcont', 'irr'], {
+        'irr:zoneState:z1': 'NOT_WATERING',
+        'irr:defaultDuration:z1': 5,
+      }));
+    });
+    broker.deliver('arcus/timer-1/zone_z1/set', 'OPEN');
+    assert.deepEqual(client.methodCalls, [
+      { address: 'DRIV:dev:timer-1', call: { method: 'irrcont:WaterNowV2', args: { zone: 'z1', duration: 5 } } },
+    ]);
+    assert.deepEqual(client.commands, []);
   });
 
   it('republishes discovery after reconnecting to the broker', async () => {

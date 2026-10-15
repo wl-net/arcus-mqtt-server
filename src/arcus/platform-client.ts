@@ -1,6 +1,6 @@
 import type { Config } from '../config.js';
 import type { ArcusClient } from './client.js';
-import type { ArcusDevice, ArcusAttributes, AlarmState, SceneInfo } from './types.js';
+import type { ArcusDevice, ArcusAttributes, ArcusMethodCall, AlarmState, SceneInfo } from './types.js';
 import { isAttributeValue } from './types.js';
 import { BridgeClient, throwIfErrorResponse } from './bridge-client.js';
 import { SecuritySubsystem } from './capabilities.js';
@@ -189,6 +189,11 @@ export class PlatformArcusClient implements ArcusClient {
   async sendCommand(address: string, attributes: ArcusAttributes): Promise<void> {
     console.log(`[PlatformClient] Command → ${address}:`, attributes);
     throwIfErrorResponse(await this.bridge.sendRequest(address, 'base:SetAttributes', attributes), 'base:SetAttributes');
+  }
+
+  async callMethod(address: string, call: ArcusMethodCall): Promise<void> {
+    console.log(`[PlatformClient] ${call.method} → ${address}:`, call.args);
+    throwIfErrorResponse(await this.bridge.sendRequest(address, call.method, call.args), call.method);
   }
 
   onDeviceEvent(handler: (address: string, attributes: ArcusAttributes) => void): void {
