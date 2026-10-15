@@ -1,3 +1,23 @@
+import { existsSync, readFileSync } from 'fs';
+
+/** Where the Home Assistant Supervisor writes an app's settings */
+export const APP_OPTIONS_PATH = '/data/options.json';
+
+/**
+ * Copy settings from a Home Assistant app's options file into the environment.
+ * Variables already set win, and empty or null values are skipped so unset
+ * optional fields stay unset. Returns false when there's no options file.
+ */
+export function loadAppOptions(path = APP_OPTIONS_PATH, env: NodeJS.ProcessEnv = process.env): boolean {
+  if (!existsSync(path)) return false;
+  const options = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+  for (const [key, value] of Object.entries(options)) {
+    if (value === null || value === '' || env[key] !== undefined) continue;
+    env[key] = String(value);
+  }
+  return true;
+}
+
 export interface Config {
   mqttPort: number;
   mqttUsername: string | undefined;

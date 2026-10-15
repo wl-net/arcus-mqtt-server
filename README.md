@@ -44,6 +44,20 @@ Arcus Platform ──► Arcus MQTT Server ──► Embedded MQTT Broker ──
 | Alarm bypass | `binary_sensor` | On while armed with sensors bypassed; lists them by name |
 | Scenes | `button` + `device_automation` | Fire scenes, scene triggers |
 
+## Install as a Home Assistant App
+
+On Home Assistant OS, the server can run as a Home Assistant app (formerly add-on) from a prebuilt image. The broker then stays on Home Assistant's internal network, with no port published on the host.
+
+1. Go to **Settings → Apps → Install app**, open the **⋮** menu, choose **Repositories** and add `https://github.com/wl-net/arcus-mqtt-server`
+2. Install **Arcus MQTT** from the store
+3. On the app's **Configuration** tab, set `ARCUS_BRIDGE_URL` and the settings for your mode (see [Configuration](#configuration)). Turn on **Show unused optional configuration options** to see the optional fields. Set `MQTT_USERNAME` and `MQTT_PASSWORD` too, or anything on Home Assistant's internal network, including other apps, can control your devices
+4. On the **Info** tab, turn on **Start on boot** and **Watchdog**, then start the app
+5. Add the MQTT integration (**Settings → Devices & Services → Add Integration → MQTT**) with broker `9c7af54d-arcus-mqtt`, port `1883`, and the MQTT username and password from step 3
+
+The broker's hostname is `<repository hash>-arcus-mqtt`, where the hash is the first 8 hex digits of the SHA-1 of the repository URL as you entered it. `9c7af54d` is the hash of `https://github.com/wl-net/arcus-mqtt-server` exactly: a trailing `/` or `.git` gives a different hostname. The app's **Info** tab shows the hostname while the app is running.
+
+Home Assistant's MQTT integration connects to one broker, so this replaces any other broker you use, such as the Mosquitto app.
+
 ## Quick Start
 
 ```bash
@@ -92,7 +106,7 @@ npm start
 
 ## Configuration
 
-All configuration is via environment variables:
+All configuration is via environment variables. As a Home Assistant app, set them on the app's **Configuration** tab instead: the server reads them from `/data/options.json`, and variables already set in the environment take precedence.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -135,7 +149,7 @@ All configuration is via environment variables:
 ```
 src/
 ├── index.ts              # Entry point
-├── config.ts             # Environment variable config
+├── config.ts             # Environment variable config, Home Assistant app options
 ├── broker.ts             # Aedes MQTT broker setup
 ├── sync.ts               # Sync loop (polling + events)
 ├── arcus/
@@ -224,3 +238,15 @@ npm test          # Compile and run the test suite
 ```
 
 Tests use Node's built-in test runner and live in `test/`. They compile to `build-test/` with `tsconfig.test.json`, so they never end up in `dist/` or the Docker image. `test/helpers.ts` provides a fake MQTT broker and a fake Arcus WebSocket server.
+
+### Releasing
+
+The Home Assistant app pulls `ghcr.io/wl-net/arcus-mqtt-server:<version>`, where `<version>` is `version` in `arcus_mqtt/config.yaml`.
+
+1. Bump `version` in `arcus_mqtt/config.yaml` and commit
+2. Tag it `v<version>` and push the tag: `git tag v0.2.0 && git push origin v0.2.0`
+3. Push `main` once the release workflow has finished
+
+The release workflow runs the tests, checks that the tag matches `version`, and pushes the amd64 and arm64 image tagged `<version>` and `latest`. Home Assistant offers the update once the new `version` reaches `main`, and the update fails until the image exists, which is why `main` goes last.
+
+The first release creates the package on GitHub as private. Make it public (**Package settings → Change visibility**) so Home Assistant can pull it.

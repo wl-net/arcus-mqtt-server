@@ -1,13 +1,16 @@
-import { loadConfig } from './config.js';
+import { loadAppOptions, loadConfig, APP_OPTIONS_PATH } from './config.js';
 import { startBroker } from './broker.js';
 import { MockArcusClient } from './arcus/client.js';
 import { PlatformArcusClient } from './arcus/platform-client.js';
 import { startSync } from './sync.js';
 
 async function main() {
+  // Running as a Home Assistant app: settings come from the app's Configuration tab
+  const appOptions = loadAppOptions();
   const config = loadConfig();
 
   console.log('[Main] Starting Arcus MQTT Bridge');
+  if (appOptions) console.log(`[Main] Loaded app options from ${APP_OPTIONS_PATH}`);
   console.log(`[Main] Mock mode: ${config.arcusMock}`);
   console.log(`[Main] Poll interval: ${config.pollIntervalMs}ms`);
 

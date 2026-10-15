@@ -1,0 +1,3 @@
+# https://developers.home-assistant.io/docs/apps/repository
+name: Arcus MQTT Server
+url: https://github.com/wl-net/arcus-mqtt-server
