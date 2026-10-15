@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- Smart vents: open, close or set how far open, with obstruction and duct pressure sensors.
+- Irrigation controllers: a valve per zone that waters for the zone's watering time, which you can change in Home Assistant.
+
 ## 0.2.0
 
 The app now uses the Mosquitto broker app instead of running its own broker, so Home Assistant can use MQTT 5. Home Assistant requires a broker that supports MQTT 5.
