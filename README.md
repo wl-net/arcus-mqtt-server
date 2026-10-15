@@ -68,6 +68,23 @@ The app gets Mosquitto's address and login from Home Assistant, so there are no 
 
 Devices, entities, names, areas and automations carry over. Don't delete and re-add the MQTT integration instead of reconfiguring it: that removes its devices along with their names and areas.
 
+## Install with Docker
+
+If Home Assistant runs in Docker, there are no apps. `docker-compose.yml` runs the server next to it, with its own Mosquitto broker.
+
+1. `git clone https://github.com/wl-net/arcus-mqtt-server && cd arcus-mqtt-server`
+2. Copy `.env.example` to `.env`, and set `ARCUS_BRIDGE_URL` and the settings for your mode (see [Configuration](#configuration))
+3. Run `docker compose up -d --build`. `docker compose logs -f arcus-mqtt` should show `Connected to mqtt://mosquitto:1883`, then `Bridge is running`
+4. In Home Assistant, add the **MQTT** integration with broker `localhost`, port `1883` and no login. If MQTT is already set up, use **⋮ → Reconfigure** on it instead
+
+This assumes Home Assistant uses host networking, as in Home Assistant's Docker instructions. Otherwise, put it on this project's Docker network and use `mosquitto` as the broker.
+
+To update, run `git pull` and `docker compose up -d --build` again. To try a branch, check it out first.
+
+> **Security:** Mosquitto takes connections without a login, but its port is published on 127.0.0.1, so only this machine and this project's containers can reach it. That needs Docker 28.3.3 or later: older versions can let other machines on your network reach ports published on 127.0.0.1. Anything on this machine can control your devices through MQTT, including disarming the alarm.
+
+**Upgrading from 0.1.0:** 0.1.0 ran its own broker on port 1883. Stop it, follow the steps above, and in step 4 reconfigure MQTT. Devices and their settings carry over.
+
 ## Running Locally
 
 ```bash
@@ -245,11 +262,13 @@ Tests use Node's built-in test runner and live in `test/`. They compile to `buil
 
 ### Testing a Local Build
 
-To try local changes in your Home Assistant without releasing them, run them against its Mosquitto app with Docker:
+With the [Docker install](#install-with-docker), check out your branch and run `docker compose up -d --build`.
 
-1. Copy `.env.example` to `.env` and fill it in. For the MQTT login, add one to the Mosquitto app's `logins` setting or use a Home Assistant user. The Mosquitto app must publish port 1883, which it does by default
+With the app, run local changes against its Mosquitto app without releasing them:
+
+1. Copy `.env.example` to `.env` and fill it in. Set `MQTT_URL` to `mqtt://homeassistant.local:1883`, with a login from the Mosquitto app's `logins` setting or a Home Assistant user. The Mosquitto app must publish port 1883, which it does by default
 2. Stop the Arcus MQTT app in Home Assistant, so commands don't reach Arcus twice
-3. Run `docker compose up --build`
+3. Run `docker compose up --build --no-deps arcus-mqtt`, which leaves out the compose file's own Mosquitto
 4. When you're done, press Ctrl-C and start the app again
 
 Entities keep their IDs, so Home Assistant shows the local build's devices in place of the app's.

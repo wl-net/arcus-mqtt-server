@@ -1,7 +1,19 @@
-# Runs a local build for testing, connected to a broker such as Home Assistant's
-# Mosquitto app. Copy .env.example to .env and fill it in, stop the Arcus MQTT app in
-# Home Assistant so commands don't reach Arcus twice, then: docker compose up --build
+# Runs the server with its own Mosquitto broker, for Home Assistant in Docker.
+# Copy .env.example to .env and fill it in, then: docker compose up -d --build
+# Home Assistant connects to the broker at localhost:1883 (see README).
 services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      # This machine only; the server reaches it over the compose network
+      - "127.0.0.1:1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/data:/mosquitto/data
+    restart: unless-stopped
+
   arcus-mqtt:
     build: .
     env_file: .env
+    depends_on: [mosquitto]
+    restart: unless-stopped
