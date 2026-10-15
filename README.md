@@ -1,12 +1,12 @@
 # Arcus MQTT Server
 
-A Node.js/TypeScript bridge that connects Arcus smart home devices to Home Assistant via an embedded MQTT broker with automatic [HA MQTT Discovery](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery).
+A Node.js/TypeScript bridge that connects Arcus smart home devices to Home Assistant over MQTT, through a broker such as Home Assistant's Mosquitto app, with automatic [HA MQTT Discovery](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery).
 
 ## How It Works
 
 ```
-Arcus Platform ──► Arcus MQTT Server ──► Embedded MQTT Broker ──► Home Assistant
-  (or mock data)     (sync + mappers)       (Aedes, port 1883)      (auto-discovery)
+Arcus Platform ──► Arcus MQTT Server ──► MQTT broker ◄── Home Assistant
+  (or mock data)     (sync + mappers)      (Mosquitto)     (auto-discovery)
 ```
 
 1. Connects to the Arcus platform via WebSocket (or uses mock devices for testing)
@@ -15,7 +15,7 @@ Arcus Platform ──► Arcus MQTT Server ──► Embedded MQTT Broker ──
 4. Subscribes to command topics and forwards commands back to Arcus
 5. Applies real-time WebSocket events immediately, with a full resync every 5 minutes (by default) as a safety net
 6. Tracks availability: entities go unavailable when the Arcus connection drops, the device goes offline, or the hub it pairs through goes offline
-7. Auto-reconnects with exponential backoff on connection loss, then resyncs
+7. Reconnects to Arcus (with exponential backoff) and to the broker when either connection drops, then resyncs
 
 ## Supported Device Types
 
@@ -46,38 +46,51 @@ Arcus Platform ──► Arcus MQTT Server ──► Embedded MQTT Broker ──
 
 ## Install as a Home Assistant App
 
-On Home Assistant OS, the server can run as a Home Assistant app (formerly add-on) from a prebuilt image. The broker then stays on Home Assistant's internal network, with no port published on the host.
+On Home Assistant OS, the server runs as a Home Assistant app (formerly add-on) from a prebuilt image, alongside the Mosquitto broker app.
 
-1. Go to **Settings → Apps → Install app**, open the **⋮** menu, choose **Repositories** and add `https://github.com/wl-net/arcus-mqtt-server`
-2. Install **Arcus MQTT** from the store
-3. On the app's **Configuration** tab, set `ARCUS_BRIDGE_URL` and the settings for your mode (see [Configuration](#configuration)). Turn on **Show unused optional configuration options** to see the optional fields. Set `MQTT_USERNAME` and `MQTT_PASSWORD` too, or anything on Home Assistant's internal network, including other apps, can control your devices
-4. On the **Info** tab, turn on **Start on boot** and **Watchdog**, then start the app
-5. Add the MQTT integration (**Settings → Devices & Services → Add Integration → MQTT**) with broker `9c7af54d-arcus-mqtt`, port `1883`, and the MQTT username and password from step 3
+1. Install the **Mosquitto broker** app and start it. Home Assistant then offers to set up the MQTT integration: accept it
+2. Go to **Settings → Apps → Install app**, open the **⋮** menu, choose **Repositories** and add `https://github.com/wl-net/arcus-mqtt-server`
+3. Install **Arcus MQTT** from the store
+4. On the app's **Configuration** tab, set `ARCUS_BRIDGE_URL` and the settings for your mode (see [Configuration](#configuration)). Turn on **Show unused optional configuration options** to see the optional fields
+5. On the **Info** tab, turn on **Start on boot** and **Watchdog**, then start the app
 
-The broker's hostname is `<repository hash>-arcus-mqtt`, where the hash is the first 8 hex digits of the SHA-1 of the repository URL as you entered it. `9c7af54d` is the hash of `https://github.com/wl-net/arcus-mqtt-server` exactly: a trailing `/` or `.git` gives a different hostname. The app's **Info** tab shows the hostname while the app is running.
+The app gets Mosquitto's address and login from Home Assistant, so there are no MQTT settings. Devices appear automatically.
 
-Home Assistant's MQTT integration connects to one broker, so this replaces any other broker you use, such as the Mosquitto app.
+> **Security:** the Mosquitto app requires a login for every connection, and publishes port 1883 on your network. If nothing outside Home Assistant uses MQTT, turn the port off in the Mosquitto app's **Network** settings. The alarm panel doesn't require a code to disarm, so any MQTT login can disarm it.
 
-## Quick Start
+### Upgrading from 0.1.0
+
+0.1.0 ran its own broker, which only supported MQTT 3.1.1; Home Assistant requires MQTT 5. Before updating to 0.2.0:
+
+1. Install the **Mosquitto broker** app and start it
+2. Go to **Settings → Devices & services → MQTT → ⋮ → Reconfigure**. Set the broker to `core-mosquitto`, port `1883`, with a login: a Home Assistant user, or one added to the Mosquitto app's `logins`. Arcus devices are unavailable from here until step 3
+3. Update the Arcus MQTT app
+
+Devices, entities, names, areas and automations carry over. Don't delete and re-add the MQTT integration instead of reconfiguring it: that removes its devices along with their names and areas.
+
+## Running Locally
 
 ```bash
 npm install
 npm run build
 ```
 
+The server needs an MQTT broker that supports MQTT 5, such as Mosquitto (`brew install mosquitto`, then run `mosquitto`). Point `MQTT_URL` at it, and Home Assistant's MQTT integration at the same broker.
+
 ### Mock Mode (no hardware needed)
 
 ```bash
-ARCUS_MOCK=1 npm start
+MQTT_URL=mqtt://localhost:1883 ARCUS_MOCK=1 npm start
 ```
 
-Starts the broker with mock devices (switches, lights, thermostat, sensors, lock, hub, etc.). Point Home Assistant's MQTT integration at `localhost:1883` and devices appear automatically.
+Publishes mock devices (switches, lights, thermostat, sensors, lock, hub, etc.), which appear in Home Assistant automatically.
 
 ### API-Server Mode
 
 Connects to a local Arcus API server using an API key. Place ID is auto-detected from the session.
 
 ```bash
+MQTT_URL=mqtt://localhost:1883 \
 ARCUS_BRIDGE_URL=https://your-bridge-url \
 ARCUS_API_KEY=your-api-key \
 npm start
@@ -88,6 +101,7 @@ npm start
 Connects directly to the Arcus platform using user credentials. Requires a place ID.
 
 ```bash
+MQTT_URL=mqtt://localhost:1883 \
 ARCUS_BRIDGE_URL=https://your-bridge-url \
 ARCUS_PLACE_ID=your-place-id \
 ARCUS_USERNAME=your-username \
@@ -98,6 +112,7 @@ npm start
 You can also use a pre-obtained auth token instead of username/password:
 
 ```bash
+MQTT_URL=mqtt://localhost:1883 \
 ARCUS_BRIDGE_URL=https://your-bridge-url \
 ARCUS_PLACE_ID=your-place-id \
 ARCUS_AUTH_TOKEN=your-token \
@@ -110,11 +125,9 @@ All configuration is via environment variables. As a Home Assistant app, set the
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MQTT_PORT` | `1883` | MQTT broker listen port |
-| `MQTT_USERNAME` | — | Broker username. **Set this:** without it the broker accepts anyone (see below) |
-| `MQTT_PASSWORD` | — | Broker password |
-| `MQTT_TLS_CERT` | — | Path to TLS certificate |
-| `MQTT_TLS_KEY` | — | Path to TLS private key |
+| `MQTT_URL` | — | Broker to connect to, e.g. `mqtt://localhost:1883` (`mqtts://` for TLS). Not used in the app, which gets the broker from Home Assistant |
+| `MQTT_USERNAME` | — | Broker login, with `MQTT_URL` |
+| `MQTT_PASSWORD` | — | Broker password, with `MQTT_URL` |
 | `ARCUS_MOCK` | `0` | Set to `1` for mock mode |
 | `POLL_INTERVAL_MS` | `300000` | Full resync interval (ms). Live events carry most updates; this is a safety net |
 | `HA_DISCOVERY_PREFIX` | `homeassistant` | HA MQTT Discovery topic prefix |
@@ -126,16 +139,7 @@ All configuration is via environment variables. As a Home Assistant app, set the
 | `ARCUS_AUTH_TOKEN` | — | Auth token, alternative to username/password |
 | `ARCUS_PLACE_ID` | — | Place ID (required for client-bridge, optional for api-server) |
 
-> **Security:** broker authentication is only enabled when both `MQTT_USERNAME` and `MQTT_PASSWORD` are set. Without them, anyone who can reach port 1883 can read every sensor and send commands, including disarming the alarm and unlocking doors. The alarm panel doesn't require a code to disarm. Set credentials, and don't expose the port beyond the network Home Assistant runs on.
-
-## Home Assistant Setup
-
-1. Start the Arcus MQTT server
-2. In Home Assistant, go to **Settings → Devices & Services → Add Integration → MQTT**
-3. Set the broker to the host running this server, port `1883`, with the `MQTT_USERNAME` and `MQTT_PASSWORD` you configured
-4. Devices appear automatically via MQTT Discovery
-
-### Notes
+## Notes
 
 - **Alarm bypass notifications.** Arming with a door or window open arms around it (Arcus "arm bypassed"). The **Bypassed sensors** binary sensor on the *Arcus Security* device turns on when that happens, and its `bypassed_sensors` attribute lists the sensors. Trigger a notification automation on it turning on.
 - **Thermostat fan.** Arcus fans have two states: run only while heating or cooling, or run all the time. They appear as **off** and **on** (or off/low/medium/high for multi-speed fans), because HomeKit's fan toggle needs an "off" mode. "Off" still runs the fan during heating and cooling.
@@ -150,7 +154,7 @@ All configuration is via environment variables. As a Home Assistant app, set the
 src/
 ├── index.ts              # Entry point
 ├── config.ts             # Environment variable config, Home Assistant app options
-├── broker.ts             # Aedes MQTT broker setup
+├── mqtt.ts               # MQTT client, finding the broker
 ├── sync.ts               # Sync loop (polling + events)
 ├── arcus/
 │   ├── types.ts          # ArcusDevice, ArcusClient interface
@@ -226,7 +230,7 @@ An entity is available only while every availability topic it lists is `online`:
 
 `arcus` is the default `DEVICE_ID_PREFIX`; the alarm topics currently always use `arcus`.
 
-State, availability and discovery messages are retained so Home Assistant picks them up immediately on connect or restart. The embedded broker keeps retained messages in memory, and the server republishes everything when it starts.
+State, availability and discovery messages are retained so Home Assistant picks them up immediately on connect or restart. The server republishes everything when it starts and after reconnecting to the broker. If the server drops off without disconnecting, the broker publishes its will message, `offline` on `arcus/bridge/availability`, so its entities go unavailable.
 
 ## Development
 
@@ -237,7 +241,18 @@ npm start         # Run compiled output
 npm test          # Compile and run the test suite
 ```
 
-Tests use Node's built-in test runner and live in `test/`. They compile to `build-test/` with `tsconfig.test.json`, so they never end up in `dist/` or the Docker image. `test/helpers.ts` provides a fake MQTT broker and a fake Arcus WebSocket server.
+Tests use Node's built-in test runner and live in `test/`. They compile to `build-test/` with `tsconfig.test.json`, so they never end up in `dist/` or the Docker image. `test/helpers.ts` provides a fake MQTT connection and a fake Arcus WebSocket server. `test/mqtt.test.ts` runs the MQTT client against an in-process aedes broker, which only speaks MQTT 3.1.1, and against a real MQTT 5 broker when `TEST_MQTT_URL` is set. CI runs Mosquitto for that.
+
+### Testing a Local Build
+
+To try local changes in your Home Assistant without releasing them, run them against its Mosquitto app with Docker:
+
+1. Copy `.env.example` to `.env` and fill it in. For the MQTT login, add one to the Mosquitto app's `logins` setting or use a Home Assistant user. The Mosquitto app must publish port 1883, which it does by default
+2. Stop the Arcus MQTT app in Home Assistant, so commands don't reach Arcus twice
+3. Run `docker compose up --build`
+4. When you're done, press Ctrl-C and start the app again
+
+Entities keep their IDs, so Home Assistant shows the local build's devices in place of the app's.
 
 ### Releasing
 
@@ -249,4 +264,4 @@ The Home Assistant app pulls `ghcr.io/wl-net/arcus-mqtt-server:<version>`, where
 
 The release workflow runs the tests, checks that the tag matches `version`, and pushes the amd64 and arm64 image tagged `<version>` and `latest`. Home Assistant offers the update once the new `version` reaches `main`, and the update fails until the image exists, which is why `main` goes last.
 
-The first release creates the package on GitHub as private. Make it public (**Package settings → Change visibility**) so Home Assistant can pull it.
+The package on GitHub must stay public so Home Assistant can pull the image.

@@ -21,4 +21,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      # A real MQTT 5 broker for the integration test in test/mqtt.test.ts
+      - name: Start Mosquitto
+        run: docker run -d --name mosquitto -p 1883:1883 -v "$PWD/test/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro" eclipse-mosquitto:2
       - run: npm test
+        env:
+          TEST_MQTT_URL: mqtt://localhost:1883

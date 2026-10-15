@@ -19,11 +19,12 @@ export function loadAppOptions(path = APP_OPTIONS_PATH, env: NodeJS.ProcessEnv =
 }
 
 export interface Config {
-  mqttPort: number;
+  /** Broker to connect to, e.g. mqtt://localhost:1883; unset in the app, where the Supervisor provides it */
+  mqttUrl: string | undefined;
   mqttUsername: string | undefined;
   mqttPassword: string | undefined;
-  mqttTlsCert: string | undefined;
-  mqttTlsKey: string | undefined;
+  /** Set by the Supervisor when running as a Home Assistant app */
+  supervisorToken: string | undefined;
   arcusMock: boolean;
   pollIntervalMs: number;
   haDiscoveryPrefix: string;
@@ -38,11 +39,10 @@ export interface Config {
 
 export function loadConfig(): Config {
   return {
-    mqttPort: parseInt(process.env.MQTT_PORT ?? '1883', 10),
-    mqttUsername: process.env.MQTT_USERNAME,
-    mqttPassword: process.env.MQTT_PASSWORD,
-    mqttTlsCert: process.env.MQTT_TLS_CERT,
-    mqttTlsKey: process.env.MQTT_TLS_KEY,
+    mqttUrl: process.env.MQTT_URL || undefined,
+    mqttUsername: process.env.MQTT_USERNAME || undefined,
+    mqttPassword: process.env.MQTT_PASSWORD || undefined,
+    supervisorToken: process.env.SUPERVISOR_TOKEN || undefined,
     arcusMock: process.env.ARCUS_MOCK === '1',
     pollIntervalMs: parseInt(process.env.POLL_INTERVAL_MS ?? '300000', 10),
     haDiscoveryPrefix: process.env.HA_DISCOVERY_PREFIX ?? 'homeassistant',

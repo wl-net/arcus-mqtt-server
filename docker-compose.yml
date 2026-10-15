@@ -1,11 +1,7 @@
+# Runs a local build for testing, connected to a broker such as Home Assistant's
+# Mosquitto app. Copy .env.example to .env and fill it in, stop the Arcus MQTT app in
+# Home Assistant so commands don't reach Arcus twice, then: docker compose up --build
 services:
   arcus-mqtt:
     build: .
-    ports:
-      - "1883:1883"
-    environment:
-      - ARCUS_MOCK=1
-      # - ARCUS_BRIDGE_URL=ws://...
-      # - ARCUS_USERNAME=
-      # - ARCUS_PASSWORD=
-    restart: unless-stopped
+    env_file: .env

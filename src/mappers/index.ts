@@ -1,4 +1,4 @@
-import type { Broker } from '../broker.js';
+import type { Mqtt } from '../mqtt.js';
 import type { ArcusDevice, ArcusAttributes } from '../arcus/types.js';
 import type { Config } from '../config.js';
 import type { HADiscoveryConfig } from '../ha/discovery.js';
@@ -23,7 +23,7 @@ export interface Mapper {
 
   /** Handle a real-time event (e.g. publish a trigger). Optional. */
   onEvent?(
-    broker: Broker,
+    mqtt: Mqtt,
     config: Config,
     device: ArcusDevice,
     attributes: ArcusAttributes,

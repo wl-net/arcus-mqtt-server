@@ -1,4 +1,4 @@
-import type { Broker } from '../broker.js';
+import type { Mqtt } from '../mqtt.js';
 import type { ArcusClient } from '../arcus/client.js';
 import type { AlarmState } from '../arcus/types.js';
 import type { Config } from '../config.js';
@@ -30,7 +30,7 @@ function mapAlarmState(alarm: AlarmState): string {
   }
 }
 
-export function publishAlarmDiscovery(broker: Broker, config: Config): void {
+export function publishAlarmDiscovery(mqtt: Mqtt, config: Config): void {
   const topic = discoveryTopic(config, 'alarm_control_panel', 'alarm');
   const payload = {
     name: 'Security Alarm',
@@ -56,11 +56,11 @@ export function publishAlarmDiscovery(broker: Broker, config: Config): void {
     },
   };
 
-  publishDiscoveryConfig(broker, topic, payload);
+  publishDiscoveryConfig(mqtt, topic, payload);
 
   // On while the alarm is armed with sensors excluded (e.g. a window left open),
   // so HA can notify about it. Attributes list the bypassed sensors by name.
-  publishDiscoveryConfig(broker, discoveryTopic(config, 'binary_sensor', 'alarm_bypassed'), {
+  publishDiscoveryConfig(mqtt, discoveryTopic(config, 'binary_sensor', 'alarm_bypassed'), {
     name: 'Bypassed sensors',
     unique_id: `${config.deviceIdPrefix}_alarm_bypassed`,
     object_id: `${config.deviceIdPrefix}_alarm_bypassed`,
@@ -77,67 +77,34 @@ export function publishAlarmDiscovery(broker: Broker, config: Config): void {
   });
 }
 
-export function publishAlarmState(broker: Broker, alarm: AlarmState, nameOf: DeviceNameLookup): void {
+export function publishAlarmState(mqtt: Mqtt, alarm: AlarmState, nameOf: DeviceNameLookup): void {
   const state = mapAlarmState(alarm);
 
   // Bypasses only matter while the alarm is (being) armed
   const bypassed = alarm.securityMode === 'DISARMED' ? [] : alarm.bypassedDevices.map(nameOf);
-  broker.publish(
-    {
-      cmd: 'publish',
-      topic: ALARM_ATTRIBUTES_TOPIC,
-      payload: Buffer.from(JSON.stringify({
-        bypassed: bypassed.length > 0 ? 'ON' : 'OFF',
-        bypassed_sensors: bypassed,
-      })),
-      qos: 0,
-      dup: false,
-      retain: true,
-    },
-    () => {},
-  );
+  mqtt.publish(ALARM_ATTRIBUTES_TOPIC, JSON.stringify({
+    bypassed: bypassed.length > 0 ? 'ON' : 'OFF',
+    bypassed_sensors: bypassed,
+  }), true);
 
-  broker.publish(
-    {
-      cmd: 'publish',
-      topic: ALARM_STATE_TOPIC,
-      payload: Buffer.from(state),
-      qos: 0,
-      dup: false,
-      retain: true,
-    },
-    () => {},
-  );
+  mqtt.publish(ALARM_STATE_TOPIC, state, true);
 }
 
-export function publishAlarmAvailability(broker: Broker, online: boolean): void {
-  broker.publish(
-    {
-      cmd: 'publish',
-      topic: ALARM_AVAILABILITY_TOPIC,
-      payload: Buffer.from(online ? 'online' : 'offline'),
-      qos: 0,
-      dup: false,
-      retain: true,
-    },
-    () => {},
-  );
+export function publishAlarmAvailability(mqtt: Mqtt, online: boolean): void {
+  mqtt.publish(ALARM_AVAILABILITY_TOPIC, online ? 'online' : 'offline', true);
 }
 
-export function setupAlarmCommandHandler(broker: Broker, client: ArcusClient, nameOf: DeviceNameLookup): void {
+export function setupAlarmCommandHandler(mqtt: Mqtt, client: ArcusClient, nameOf: DeviceNameLookup): void {
   const refreshState = async () => {
     try {
       const state = await client.getAlarmState();
-      publishAlarmState(broker, state, nameOf);
+      publishAlarmState(mqtt, state, nameOf);
     } catch (err) {
       console.error('[Alarm] Failed to refresh state:', err);
     }
   };
 
-  broker.on('publish', (packet, _client) => {
-    if (packet.topic !== ALARM_COMMAND_TOPIC) return;
-    const command = packet.payload.toString();
-
+  mqtt.subscribe(ALARM_COMMAND_TOPIC, (_topic, command) => {
     switch (command) {
       case 'ARM_AWAY':
         console.log('[Alarm] Command: ARM_AWAY');

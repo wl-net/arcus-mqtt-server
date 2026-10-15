@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer, type WebSocket } from 'ws';
-import type { Broker } from '../src/broker.js';
+import { topicMatches, type Mqtt } from '../src/mqtt.js';
 import type { ArcusDevice, ArcusAttributes } from '../src/arcus/types.js';
 import { loadConfig, type Config } from '../src/config.js';
 
@@ -25,25 +25,41 @@ export function makeDevice(
   return { address, name, type: 'Test', caps: new Set(caps), attributes: { ...attributes } };
 }
 
-/** A stand-in for the aedes broker that records what the app publishes */
-export class FakeBroker {
+/** A stand-in for the MQTT connection that records what the app publishes */
+export class FakeMqtt implements Mqtt {
   /** Every publish, in order */
   readonly published: Array<{ topic: string; payload: string; retain: boolean }> = [];
   /** Latest retained payload per topic, as a real broker would keep it (empty payload clears) */
   readonly retained = new Map<string, string>();
+  private subscriptions: Array<{ filter: string; handler: (topic: string, payload: string) => void }> = [];
+  private reconnectHandlers: Array<() => void> = [];
 
-  publish(packet: { topic: string; payload: Buffer | string; retain?: boolean }, cb?: () => void): void {
-    const payload = packet.payload.toString();
-    this.published.push({ topic: packet.topic, payload, retain: !!packet.retain });
-    if (packet.retain) {
-      if (payload === '') this.retained.delete(packet.topic);
-      else this.retained.set(packet.topic, payload);
+  publish(topic: string, payload: string, retain: boolean): void {
+    this.published.push({ topic, payload, retain });
+    if (retain) {
+      if (payload === '') this.retained.delete(topic);
+      else this.retained.set(topic, payload);
     }
-    cb?.();
   }
 
-  on(): this {
-    return this;
+  subscribe(filter: string, handler: (topic: string, payload: string) => void): void {
+    this.subscriptions.push({ filter, handler });
+  }
+
+  onReconnect(handler: () => void): void {
+    this.reconnectHandlers.push(handler);
+  }
+
+  /** Deliver a message to the app's matching subscriptions, as HA sending a command would */
+  deliver(topic: string, payload: string): void {
+    for (const sub of this.subscriptions) {
+      if (topicMatches(sub.filter, topic)) sub.handler(topic, payload);
+    }
+  }
+
+  /** Simulate the connection to the broker dropping and coming back */
+  reconnect(): void {
+    for (const handler of this.reconnectHandlers) handler();
   }
 
   /** Parsed JSON of a retained topic */
@@ -56,10 +72,6 @@ export class FakeBroker {
   /** Publishes since the given index, optionally filtered by topic prefix */
   since(index: number, prefix = ''): Array<{ topic: string; payload: string }> {
     return this.published.slice(index).filter(p => p.topic.startsWith(prefix));
-  }
-
-  asBroker(): Broker {
-    return this as unknown as Broker;
   }
 }
 

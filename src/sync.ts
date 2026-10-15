@@ -1,4 +1,4 @@
-import type { Broker } from './broker.js';
+import type { Mqtt } from './mqtt.js';
 import type { ArcusClient } from './arcus/client.js';
 import type { ArcusDevice, SceneInfo } from './arcus/types.js';
 import type { Config } from './config.js';
@@ -6,7 +6,7 @@ import { matchingMappers } from './mappers/index.js';
 import { DeviceConnection, DeviceAdvanced, Hub, HubConnection } from './arcus/capabilities.js';
 import { publishState, publishAvailability, publishBridgeAvailability, publishHubConnection, isDeviceOnline, clearDeviceTopics } from './ha/state.js';
 import type { HADiscoveryConfig } from './ha/discovery.js';
-import { syncOwnedDiscovery, removeOwnedDiscovery } from './ha/discovery.js';
+import { syncOwnedDiscovery, removeOwnedDiscovery, resetPublishedDiscovery } from './ha/discovery.js';
 import { setupCommandHandler } from './ha/command.js';
 import { publishAlarmDiscovery, publishAlarmState, publishAlarmAvailability, setupAlarmCommandHandler } from './ha/alarm.js';
 import { publishSceneDiscovery, publishSceneFired, setupSceneCommandHandler } from './ha/scenes.js';
@@ -15,17 +15,17 @@ import { publishSceneDiscovery, publishSceneFired, setupSceneCommandHandler } fr
 const HUB_PROTOCOLS = new Set(['ZIGB', 'ZWAV']);
 
 /** Publish HA MQTT Discovery config for a device (only configs that changed; stale ones are removed) */
-function publishDiscovery(broker: Broker, config: Config, device: ArcusDevice): void {
+function publishDiscovery(mqtt: Mqtt, config: Config, device: ArcusDevice): void {
   const configs: HADiscoveryConfig[] = [];
   for (const mapper of matchingMappers(device)) {
     configs.push(...mapper.buildDiscovery(config, device));
   }
-  syncOwnedDiscovery(broker, device.address, configs);
+  syncOwnedDiscovery(mqtt, device.address, configs);
 }
 
 /** Perform a full sync: fetch devices, publish discovery + state + availability */
 async function fullSync(
-  broker: Broker,
+  mqtt: Mqtt,
   config: Config,
   client: ArcusClient,
   devices: Map<string, ArcusDevice>,
@@ -51,7 +51,7 @@ async function fullSync(
     }
     deviceList.push(hub);
     // Before device discovery, so hub-paired devices don't start out waiting on this topic
-    publishHubConnection(broker, config, hub);
+    publishHubConnection(mqtt, config, hub);
   }
 
   // Update the devices map in-place (don't clear — avoids dropping real-time events mid-sync)
@@ -64,28 +64,28 @@ async function fullSync(
   for (const [address, device] of devices) {
     if (!freshAddresses.has(address)) {
       devices.delete(address);
-      removeOwnedDiscovery(broker, address);
-      clearDeviceTopics(broker, config, device);
+      removeOwnedDiscovery(mqtt, address);
+      clearDeviceTopics(mqtt, config, device);
       console.log(`[Sync] Removed device: ${device.name} (${address})`);
     }
   }
 
   // Publish discovery, state, and availability for each device
   for (const device of deviceList) {
-    publishDiscovery(broker, config, device);
-    publishState(broker, config, device);
-    publishAvailability(broker, config, device);
+    publishDiscovery(mqtt, config, device);
+    publishState(mqtt, config, device);
+    publishAvailability(mqtt, config, device);
   }
 
   // Sync alarm: discovery + state + availability
-  publishAlarmDiscovery(broker, config);
+  publishAlarmDiscovery(mqtt, config);
   try {
     const alarmState = await client.getAlarmState();
-    publishAlarmState(broker, alarmState, (address) => devices.get(address)?.name ?? address);
-    publishAlarmAvailability(broker, true);
+    publishAlarmState(mqtt, alarmState, (address) => devices.get(address)?.name ?? address);
+    publishAlarmAvailability(mqtt, true);
   } catch (err) {
     console.error('[Sync] Alarm state fetch error:', err);
-    publishAlarmAvailability(broker, false);
+    publishAlarmAvailability(mqtt, false);
   }
 
   // Sync scenes: refresh list + publish discovery
@@ -93,7 +93,7 @@ async function fullSync(
     const freshScenes = await client.listScenes();
     scenes.length = 0;
     scenes.push(...freshScenes);
-    publishSceneDiscovery(broker, config, scenes);
+    publishSceneDiscovery(mqtt, config, scenes);
   } catch (err) {
     console.error('[Sync] Scene list error:', err);
   }
@@ -101,7 +101,7 @@ async function fullSync(
 
 /** Start the sync loop: initial sync, then poll + event handling */
 export async function startSync(
-  broker: Broker,
+  mqtt: Mqtt,
   config: Config,
   client: ArcusClient,
 ): Promise<{ stop(): void }> {
@@ -110,7 +110,7 @@ export async function startSync(
   let connected = false;
 
   // Entities stay unavailable until the first sync succeeds
-  publishBridgeAvailability(broker, config, false);
+  publishBridgeAvailability(mqtt, config, false);
 
   // Only one full sync runs at a time. A request that arrives mid-sync (e.g. a
   // reconnect during a poll) shares the running sync and makes it run once more.
@@ -128,8 +128,8 @@ export async function startSync(
         do {
           rerun = false;
           try {
-            await fullSync(broker, config, client, devices, scenes);
-            if (connected) publishBridgeAvailability(broker, config, true);
+            await fullSync(mqtt, config, client, devices, scenes);
+            if (connected) publishBridgeAvailability(mqtt, config, true);
           } catch (err) {
             // A sync requested meanwhile (typically a reconnect) supersedes this failure
             if (!rerun) throw err;
@@ -149,7 +149,7 @@ export async function startSync(
     connected = up;
     if (!up) {
       console.warn('[Sync] Arcus connection lost, marking bridge offline');
-      publishBridgeAvailability(broker, config, false);
+      publishBridgeAvailability(mqtt, config, false);
       return;
     }
     console.log('[Sync] Arcus connection restored, resyncing');
@@ -158,21 +158,34 @@ export async function startSync(
     });
   });
 
+  // After an MQTT reconnect, republish everything: the broker may have restarted and
+  // lost its retained messages, and the will message has marked the bridge offline
+  mqtt.onReconnect(() => {
+    resetPublishedDiscovery(mqtt);
+    if (!connected) {
+      publishBridgeAvailability(mqtt, config, false);
+      return;
+    }
+    syncAndMarkOnline().catch((err) => {
+      console.error('[Sync] Resync after MQTT reconnect failed:', err);
+    });
+  });
+
   // Set up command handling (HA → Arcus)
-  setupCommandHandler(broker, config, client, devices);
+  setupCommandHandler(mqtt, config, client, devices);
 
   // Set up alarm command handling and event listening
   const deviceName = (address: string) => devices.get(address)?.name ?? address;
-  setupAlarmCommandHandler(broker, client, deviceName);
+  setupAlarmCommandHandler(mqtt, client, deviceName);
   client.onAlarmEvent((alarmState) => {
-    publishAlarmState(broker, alarmState, deviceName);
+    publishAlarmState(mqtt, alarmState, deviceName);
     console.log(`[Sync] Real-time alarm update: ${alarmState.securityMode}`);
   });
 
   // Set up scene command handling and event listening
-  setupSceneCommandHandler(broker, config, client, scenes);
+  setupSceneCommandHandler(mqtt, config, client, scenes);
   client.onSceneEvent((sceneAddress) => {
-    publishSceneFired(broker, config, scenes, sceneAddress);
+    publishSceneFired(mqtt, config, scenes, sceneAddress);
   });
 
   // Listen for real-time device events
@@ -188,15 +201,15 @@ export async function startSync(
     Object.assign(device.attributes, attributes);
 
     // Re-publish state immediately
-    publishState(broker, config, device);
+    publishState(mqtt, config, device);
 
     if (HubConnection.ATTR_STATE in attributes && device.caps.has(Hub.NAMESPACE)) {
-      publishHubConnection(broker, config, device);
+      publishHubConnection(mqtt, config, device);
       console.log(`[Sync] Hub is now ${attributes[HubConnection.ATTR_STATE]}`);
     }
 
     if (DeviceConnection.ATTR_STATE in attributes) {
-      publishAvailability(broker, config, device);
+      publishAvailability(mqtt, config, device);
       const online = isDeviceOnline(device);
       if (online !== wasOnline) {
         console.log(`[Sync] ${device.name} (${address}) is now ${online ? 'online' : 'offline'}`);
@@ -205,7 +218,7 @@ export async function startSync(
 
     // Fire any event-driven mappers (e.g. button triggers)
     for (const mapper of matchingMappers(device)) {
-      mapper.onEvent?.(broker, config, device, attributes);
+      mapper.onEvent?.(mqtt, config, device, attributes);
     }
 
     console.log(`[Sync] Real-time update: ${device.name} (${address})`);

@@ -6,7 +6,7 @@ import {
   syncOwnedDiscovery,
   removeOwnedDiscovery,
 } from '../src/ha/discovery.js';
-import { FakeBroker, makeDevice, testConfig } from './helpers.js';
+import { FakeMqtt, makeDevice, testConfig } from './helpers.js';
 
 const config = testConfig();
 
@@ -53,41 +53,41 @@ describe('owned discovery', () => {
   const disc = (topic: string, name = 'x') => ({ topic, payload: { name } });
 
   it('publishes a config only when it changes', () => {
-    const broker = new FakeBroker();
-    syncOwnedDiscovery(broker.asBroker(), 'owner-a', [disc('t/a1'), disc('t/a2')]);
+    const broker = new FakeMqtt();
+    syncOwnedDiscovery(broker, 'owner-a', [disc('t/a1'), disc('t/a2')]);
     assert.equal(broker.published.length, 2);
 
-    syncOwnedDiscovery(broker.asBroker(), 'owner-a', [disc('t/a1'), disc('t/a2')]);
+    syncOwnedDiscovery(broker, 'owner-a', [disc('t/a1'), disc('t/a2')]);
     assert.equal(broker.published.length, 2, 'unchanged configs were re-sent');
 
-    syncOwnedDiscovery(broker.asBroker(), 'owner-a', [disc('t/a1', 'renamed'), disc('t/a2')]);
+    syncOwnedDiscovery(broker, 'owner-a', [disc('t/a1', 'renamed'), disc('t/a2')]);
     assert.deepEqual(broker.since(2).map(p => p.topic), ['t/a1']);
   });
 
   it('removes configs an owner no longer publishes', () => {
-    const broker = new FakeBroker();
-    syncOwnedDiscovery(broker.asBroker(), 'owner-b', [disc('t/b1'), disc('t/b2')]);
-    syncOwnedDiscovery(broker.asBroker(), 'owner-b', [disc('t/b1')]);
+    const broker = new FakeMqtt();
+    syncOwnedDiscovery(broker, 'owner-b', [disc('t/b1'), disc('t/b2')]);
+    syncOwnedDiscovery(broker, 'owner-b', [disc('t/b1')]);
     assert.deepEqual(broker.since(2), [{ topic: 't/b2', payload: '', retain: true }]);
     assert.equal(broker.retained.has('t/b2'), false);
   });
 
   it('republishes a removed owner when it comes back', () => {
-    const broker = new FakeBroker();
-    syncOwnedDiscovery(broker.asBroker(), 'owner-c', [disc('t/c1')]);
-    removeOwnedDiscovery(broker.asBroker(), 'owner-c');
+    const broker = new FakeMqtt();
+    syncOwnedDiscovery(broker, 'owner-c', [disc('t/c1')]);
+    removeOwnedDiscovery(broker, 'owner-c');
     assert.equal(broker.retained.has('t/c1'), false);
 
     // The cache entry must have been cleared, or this would be skipped as unchanged
-    syncOwnedDiscovery(broker.asBroker(), 'owner-c', [disc('t/c1')]);
+    syncOwnedDiscovery(broker, 'owner-c', [disc('t/c1')]);
     assert.equal(broker.retained.get('t/c1'), JSON.stringify({ name: 'x' }));
   });
 
   it("does not touch other owners' configs", () => {
-    const broker = new FakeBroker();
-    syncOwnedDiscovery(broker.asBroker(), 'owner-d', [disc('t/d1')]);
-    syncOwnedDiscovery(broker.asBroker(), 'owner-e', [disc('t/e1')]);
-    removeOwnedDiscovery(broker.asBroker(), 'owner-d');
+    const broker = new FakeMqtt();
+    syncOwnedDiscovery(broker, 'owner-d', [disc('t/d1')]);
+    syncOwnedDiscovery(broker, 'owner-e', [disc('t/e1')]);
+    removeOwnedDiscovery(broker, 'owner-d');
     assert.equal(broker.retained.has('t/e1'), true);
   });
 });

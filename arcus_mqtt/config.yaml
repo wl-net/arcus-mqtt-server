@@ -1,9 +1,9 @@
 # https://developers.home-assistant.io/docs/apps/configuration
 name: Arcus MQTT
 # The image tag Home Assistant pulls. The release workflow publishes it from tag v<version>
-version: "0.1.0"
+version: "0.2.0"
 slug: arcus_mqtt
-description: Arcus devices in Home Assistant, through an embedded MQTT broker
+description: Arcus devices in Home Assistant, through the Mosquitto broker app
 url: https://github.com/wl-net/arcus-mqtt-server
 arch:
   - aarch64
@@ -12,9 +12,12 @@ startup: application
 boot: auto
 # Multi-arch manifest: the Supervisor pulls the image for its own architecture
 image: ghcr.io/wl-net/arcus-mqtt-server
-# No ports: Home Assistant reaches the broker on the internal network, and
-# nothing is published on the host
-watchdog: tcp://[HOST]:[PORT:1883]
+# The broker's address and login come from the Supervisor. The Supervisor doesn't
+# enforce "need"; the server waits, logging why, until a broker app is installed
+services:
+  - mqtt:need
+# No ports and no watchdog URL: the server only makes outgoing connections. The
+# watchdog still restarts the app if it stops
 # Keys are the server's environment variables; the server reads them from /data/options.json
 options:
   ARCUS_BRIDGE_URL: null
@@ -25,5 +28,3 @@ schema:
   ARCUS_PASSWORD: password?
   ARCUS_PLACE_ID: str?
   ARCUS_AUTH_TOKEN: password?
-  MQTT_USERNAME: str?
-  MQTT_PASSWORD: password?

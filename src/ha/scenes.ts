@@ -1,4 +1,4 @@
-import type { Broker } from '../broker.js';
+import type { Mqtt } from '../mqtt.js';
 import type { ArcusClient } from '../arcus/client.js';
 import type { SceneInfo } from '../arcus/types.js';
 import type { Config } from '../config.js';
@@ -28,7 +28,7 @@ const SCENES_DEVICE = (config: Config) => ({
 });
 
 /** Publish discovery for all scenes; scenes removed in Arcus are removed from HA */
-export function publishSceneDiscovery(broker: Broker, config: Config, scenes: SceneInfo[]): void {
+export function publishSceneDiscovery(mqtt: Mqtt, config: Config, scenes: SceneInfo[]): void {
   const device = SCENES_DEVICE(config);
   const configs: HADiscoveryConfig[] = [];
 
@@ -62,23 +62,20 @@ export function publishSceneDiscovery(broker: Broker, config: Config, scenes: Sc
     });
   }
 
-  syncOwnedDiscovery(broker, 'scenes', configs);
+  syncOwnedDiscovery(mqtt, 'scenes', configs);
 }
 
 export function setupSceneCommandHandler(
-  broker: Broker,
+  mqtt: Mqtt,
   config: Config,
   client: ArcusClient,
   scenes: SceneInfo[],
 ): void {
-  const prefix = `${config.deviceIdPrefix}/scene/`;
-
-  broker.on('publish', (packet, _client) => {
-    if (!packet.topic.startsWith(prefix) || !packet.topic.endsWith('/fire')) return;
-    if (packet.payload.toString() !== 'PRESS') return;
+  mqtt.subscribe(`${config.deviceIdPrefix}/scene/+/fire`, (topic, payload) => {
+    if (payload !== 'PRESS') return;
 
     // Extract scene object ID from topic: arcus/scene/scene_1/fire
-    const objectId = packet.topic.slice(prefix.length, -'/fire'.length);
+    const objectId = topic.split('/')[2];
     const scene = scenes.find(s => sceneObjectId(s) === objectId);
     if (!scene) {
       console.warn(`[Scenes] Unknown scene command: ${objectId}`);
@@ -92,7 +89,7 @@ export function setupSceneCommandHandler(
   });
 }
 
-export function publishSceneFired(broker: Broker, config: Config, scenes: SceneInfo[], sceneAddress: string): void {
+export function publishSceneFired(mqtt: Mqtt, config: Config, scenes: SceneInfo[], sceneAddress: string): void {
   const scene = scenes.find(s => s.address === sceneAddress);
   if (!scene) {
     console.warn(`[Scenes] Unknown scene fired: ${sceneAddress}`);
@@ -102,15 +99,5 @@ export function publishSceneFired(broker: Broker, config: Config, scenes: SceneI
   const topic = sceneTriggerTopic(config, scene);
   console.log(`[Scenes] Fired: ${scene.name} → ${topic}`);
 
-  broker.publish(
-    {
-      cmd: 'publish',
-      topic,
-      payload: Buffer.from('fired'),
-      qos: 0,
-      dup: false,
-      retain: false, // triggers should not be retained
-    },
-    () => {},
-  );
+  mqtt.publish(topic, 'fired', false); // triggers should not be retained
 }

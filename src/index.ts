@@ -1,5 +1,6 @@
 import { loadAppOptions, loadConfig, APP_OPTIONS_PATH } from './config.js';
-import { startBroker } from './broker.js';
+import { connectMqtt, resolveMqttConnection } from './mqtt.js';
+import { bridgeAvailabilityTopic } from './ha/topics.js';
 import { MockArcusClient } from './arcus/client.js';
 import { PlatformArcusClient } from './arcus/platform-client.js';
 import { startSync } from './sync.js';
@@ -13,9 +14,6 @@ async function main() {
   if (appOptions) console.log(`[Main] Loaded app options from ${APP_OPTIONS_PATH}`);
   console.log(`[Main] Mock mode: ${config.arcusMock}`);
   console.log(`[Main] Poll interval: ${config.pollIntervalMs}ms`);
-
-  // Start the embedded MQTT broker
-  const { broker, close } = await startBroker(config);
 
   // Create the Arcus client
   let client;
@@ -44,8 +42,12 @@ async function main() {
     client = new PlatformArcusClient(config);
   }
 
+  // Connect to the MQTT broker. If the bridge drops off, the broker marks it offline in HA
+  const connection = await resolveMqttConnection(config);
+  const { mqtt, close } = await connectMqtt(connection, { topic: bridgeAvailabilityTopic(config), payload: 'offline' });
+
   // Start sync loop
-  const sync = await startSync(broker, config, client);
+  const sync = await startSync(mqtt, config, client);
 
   console.log('[Main] Bridge is running');
 

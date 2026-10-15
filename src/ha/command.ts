@@ -1,4 +1,4 @@
-import type { Broker } from '../broker.js';
+import type { Mqtt } from '../mqtt.js';
 import type { ArcusClient } from '../arcus/client.js';
 import type { ArcusDevice } from '../arcus/types.js';
 import type { Config } from '../config.js';
@@ -10,24 +10,14 @@ import { deviceId } from './topics.js';
  * Devices map is keyed by device address.
  */
 export function setupCommandHandler(
-  broker: Broker,
+  mqtt: Mqtt,
   config: Config,
   client: ArcusClient,
   devices: Map<string, ArcusDevice>,
 ): void {
-  const prefix = config.deviceIdPrefix;
-
-  // Intercept all published messages to catch command topics
-  broker.on('publish', (packet, _client) => {
-    // Command topics: arcus/<device_id>/<entity>/set
-    const parts = packet.topic.split('/');
-    if (parts.length !== 4) return;
-    if (parts[0] !== prefix) return;
-    if (parts[3] !== 'set') return;
-
-    const devId = parts[1];
-    const entity = parts[2];
-    const payload = packet.payload.toString();
+  // Command topics: arcus/<device_id>/<entity>/set
+  mqtt.subscribe(`${config.deviceIdPrefix}/+/+/set`, (topic, payload) => {
+    const [, devId, entity] = topic.split('/');
 
     // Find the device by its short ID
     const device = findDeviceById(devices, devId);

@@ -1,4 +1,4 @@
-import type { Broker } from '../broker.js';
+import type { Mqtt } from '../mqtt.js';
 import type { ArcusDevice } from '../arcus/types.js';
 import { Device, Hub } from '../arcus/capabilities.js';
 import type { Config } from '../config.js';
@@ -66,66 +66,54 @@ interface DiscoveryCache {
   byOwner: Map<string, Set<string>>;
 }
 
-/** Per broker, since the cache describes what that broker currently holds as retained */
-const caches = new WeakMap<Broker, DiscoveryCache>();
+/** Per connection, since the cache describes what its broker currently holds as retained */
+const caches = new WeakMap<Mqtt, DiscoveryCache>();
 
-function cacheFor(broker: Broker): DiscoveryCache {
-  let cache = caches.get(broker);
+function cacheFor(mqtt: Mqtt): DiscoveryCache {
+  let cache = caches.get(mqtt);
   if (!cache) {
     cache = { published: new Map(), byOwner: new Map() };
-    caches.set(broker, cache);
+    caches.set(mqtt, cache);
   }
   return cache;
 }
 
+/**
+ * Forget which configs were published, so the next sync sends them all again. Used after
+ * reconnecting, since the broker may have restarted and lost its retained messages.
+ */
+export function resetPublishedDiscovery(mqtt: Mqtt): void {
+  cacheFor(mqtt).published.clear();
+}
+
 /** Publish a retained discovery config, skipping it if the same payload was already published */
-export function publishDiscoveryConfig(broker: Broker, topic: string, payload: Record<string, unknown>): void {
-  const { published } = cacheFor(broker);
+export function publishDiscoveryConfig(mqtt: Mqtt, topic: string, payload: Record<string, unknown>): void {
+  const { published } = cacheFor(mqtt);
   const json = JSON.stringify(payload);
   if (published.get(topic) === json) return;
   published.set(topic, json);
 
-  broker.publish(
-    {
-      cmd: 'publish',
-      topic,
-      payload: Buffer.from(json),
-      qos: 0,
-      dup: false,
-      retain: true,
-    },
-    () => {},
-  );
+  mqtt.publish(topic, json, true);
 }
 
 /** Remove a discovery config: an empty retained payload makes HA delete the entity */
-function removeDiscoveryConfig(broker: Broker, topic: string): void {
-  cacheFor(broker).published.delete(topic);
-  broker.publish(
-    {
-      cmd: 'publish',
-      topic,
-      payload: Buffer.alloc(0),
-      qos: 0,
-      dup: false,
-      retain: true,
-    },
-    () => {},
-  );
+function removeDiscoveryConfig(mqtt: Mqtt, topic: string): void {
+  cacheFor(mqtt).published.delete(topic);
+  mqtt.publish(topic, '', true);
 }
 
 /**
  * Publish an owner's full set of discovery configs, removing any it published
  * before that are no longer in the set (e.g. a capability or scene went away).
  */
-export function syncOwnedDiscovery(broker: Broker, owner: string, configs: HADiscoveryConfig[]): void {
-  const { byOwner } = cacheFor(broker);
+export function syncOwnedDiscovery(mqtt: Mqtt, owner: string, configs: HADiscoveryConfig[]): void {
+  const { byOwner } = cacheFor(mqtt);
   const topics = new Set(configs.map(c => c.topic));
   for (const disc of configs) {
-    publishDiscoveryConfig(broker, disc.topic, disc.payload);
+    publishDiscoveryConfig(mqtt, disc.topic, disc.payload);
   }
   for (const topic of byOwner.get(owner) ?? []) {
-    if (!topics.has(topic)) removeDiscoveryConfig(broker, topic);
+    if (!topics.has(topic)) removeDiscoveryConfig(mqtt, topic);
   }
 
   if (topics.size > 0) byOwner.set(owner, topics);
@@ -133,6 +121,6 @@ export function syncOwnedDiscovery(broker: Broker, owner: string, configs: HADis
 }
 
 /** Remove every discovery config an owner published (e.g. the device was deleted) */
-export function removeOwnedDiscovery(broker: Broker, owner: string): void {
-  syncOwnedDiscovery(broker, owner, []);
+export function removeOwnedDiscovery(mqtt: Mqtt, owner: string): void {
+  syncOwnedDiscovery(mqtt, owner, []);
 }

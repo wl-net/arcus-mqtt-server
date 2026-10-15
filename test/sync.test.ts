@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { startSync } from '../src/sync.js';
 import type { ArcusClient } from '../src/arcus/client.js';
 import type { ArcusDevice, ArcusAttributes, AlarmState, SceneInfo } from '../src/arcus/types.js';
-import { FakeBroker, makeDevice, testConfig, until, quietConsole } from './helpers.js';
+import { FakeMqtt, makeDevice, testConfig, until, quietConsole } from './helpers.js';
 
 /** A scriptable ArcusClient: tests change what it returns and fire its events */
 class FakeClient implements ArcusClient {
@@ -28,7 +28,10 @@ class FakeClient implements ArcusClient {
   async getHub(): Promise<ArcusDevice | null> {
     return this.hub && { ...this.hub, caps: new Set(this.hub.caps), attributes: { ...this.hub.attributes } };
   }
-  async sendCommand(): Promise<void> {}
+  readonly commands: Array<{ address: string; attributes: ArcusAttributes }> = [];
+  async sendCommand(address: string, attributes: ArcusAttributes): Promise<void> {
+    this.commands.push({ address, attributes });
+  }
   onDeviceEvent(handler: (address: string, attributes: ArcusAttributes) => void): void {
     this.deviceHandlers.push(handler);
   }
@@ -71,17 +74,17 @@ describe('sync', () => {
   afterEach(() => stop?.());
 
   async function start(setup: (client: FakeClient) => void = () => {}) {
-    const broker = new FakeBroker();
+    const broker = new FakeMqtt();
     const client = new FakeClient();
     client.devices = [contact(), lock()];
     setup(client);
-    const sync = await startSync(broker.asBroker(), testConfig(), client);
+    const sync = await startSync(broker, testConfig(), client);
     stop = sync.stop;
     return { broker, client };
   }
 
   /** A resync the way a reconnect triggers one; waits for it to finish */
-  async function resync(broker: FakeBroker, client: FakeClient) {
+  async function resync(broker: FakeMqtt, client: FakeClient) {
     const calls = client.listDevicesCalls;
     const mark = broker.published.length;
     client.emitConnection(true);
@@ -175,6 +178,22 @@ describe('sync', () => {
     await until(() => client.listDevicesCalls > calls, 3000, 'resync attempt');
     await new Promise(r => setTimeout(r, 50));
     assert.equal(broker.retained.get('arcus/bridge/availability'), 'offline');
+  });
+
+  it('sends commands from HA to Arcus', async () => {
+    const { broker, client } = await start();
+    broker.deliver('arcus/lock-1/lock/set', 'UNLOCK');
+    assert.deepEqual(client.commands, [{ address: 'DRIV:dev:lock-1', attributes: { 'doorlock:lockstate': 'UNLOCKED' } }]);
+  });
+
+  it('republishes discovery after reconnecting to the broker', async () => {
+    const { broker, client } = await start();
+    const mark = broker.published.length;
+    const calls = client.listDevicesCalls;
+    broker.reconnect();
+    await until(() => client.listDevicesCalls > calls && broker.since(mark, 'arcus/bridge/').length > 0, 3000, 'resync');
+    assert.ok(broker.since(mark).some(p => p.topic === 'homeassistant/lock/arcus/lock-1_lock/config'));
+    assert.equal(broker.retained.get('arcus/bridge/availability'), 'online');
   });
 
   describe('hub', () => {

@@ -1,7 +1,7 @@
 {
   "name": "arcus-mqtt-server",
-  "version": "0.1.0",
-  "description": "Arcus-to-Home Assistant MQTT bridge with embedded broker",
+  "version": "0.2.0",
+  "description": "Arcus-to-Home Assistant MQTT bridge",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
@@ -11,13 +11,13 @@
     "test": "tsc -p tsconfig.test.json && node --test 'build-test/test/**/*.test.js'"
   },
   "dependencies": {
-    "aedes": "^1.2.0",
+    "mqtt": "^5.16.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^22.13.0",
     "@types/ws": "^8.5.14",
-    "mqtt": "^5.15.0",
+    "aedes": "^1.2.0",
     "typescript": "^7.0.2"
   }
 }

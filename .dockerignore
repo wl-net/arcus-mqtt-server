@@ -3,3 +3,4 @@ dist
 .git
 build-test
 test
+.env
