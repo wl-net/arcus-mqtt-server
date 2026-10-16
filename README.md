@@ -88,6 +88,17 @@ To update, run `git pull` and `docker compose up -d --build` again. To try a bra
 
 **Upgrading from 0.1.0:** 0.1.0 ran its own broker on port 1883. Stop it, follow the steps above, and in step 4 reconfigure MQTT. Devices and their settings carry over.
 
+### More than one hub
+
+Each Arcus hub has its own place, and a server handles one place. For two, such as two buildings with a hub each, run a second server against the same broker, with its own `DEVICE_ID_PREFIX`:
+
+1. Copy `.env` to `.env.second`. In it, set the second place's `ARCUS_PLACE_ID` and a `DEVICE_ID_PREFIX` such as `barn`. The same Arcus login works for both places. In api-server mode, set an API key for the second place instead: each key belongs to one place
+2. Uncomment `arcus-mqtt-second` in `docker-compose.yml`, then run `docker compose up -d --build`
+
+Leave the first server's prefix as it is: changing it makes Home Assistant see new devices. Each place gets its own alarm panel, scenes and hub. Both places' alarm and scene devices are named *Arcus Security* and *Arcus Scenes*, so rename the second place's in Home Assistant.
+
+The Home Assistant app handles one place, since an app can only be installed once.
+
 ## Running Locally
 
 ```bash
@@ -151,7 +162,7 @@ All configuration is via environment variables. As a Home Assistant app, set the
 | `ARCUS_MOCK` | `0` | Set to `1` for mock mode |
 | `POLL_INTERVAL_MS` | `300000` | Full resync interval (ms). Live events carry most updates; this is a safety net |
 | `HA_DISCOVERY_PREFIX` | `homeassistant` | HA MQTT Discovery topic prefix |
-| `DEVICE_ID_PREFIX` | `arcus` | Prefix for device IDs in topics |
+| `DEVICE_ID_PREFIX` | `arcus` | Prefix for topics, unique IDs and device IDs. Give each place its own when several servers share a broker (see [More than one hub](#more-than-one-hub)) |
 | `ARCUS_BRIDGE_URL` | — | Arcus platform WebSocket URL |
 | `ARCUS_API_KEY` | — | API key (api-server mode) |
 | `ARCUS_USERNAME` | — | Platform username (client-bridge mode) |
@@ -253,7 +264,7 @@ arcus/scene/{scene_id}/fire
 
 An entity is available only while every availability topic it lists is `online`: the bridge, the device itself, and for Zigbee and Z-Wave devices, the hub. The hub's own status entities don't depend on the hub connection topic, so they stay available and can report the hub as disconnected.
 
-`arcus` is the default `DEVICE_ID_PREFIX`; the alarm topics currently always use `arcus`.
+`arcus` in the topics above is the default `DEVICE_ID_PREFIX`.
 
 State, availability and discovery messages are retained so Home Assistant picks them up immediately on connect or restart. The server republishes everything when it starts and after reconnecting to the broker. If the server drops off without disconnecting, the broker publishes its will message, `offline` on `arcus/bridge/availability`, so its entities go unavailable.
 

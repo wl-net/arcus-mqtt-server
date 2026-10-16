@@ -5,10 +5,16 @@ import type { Config } from '../config.js';
 import { discoveryTopic, bridgeAvailabilityTopic } from './topics.js';
 import { publishDiscoveryConfig } from './discovery.js';
 
-const ALARM_STATE_TOPIC = 'arcus/alarm/state';
-const ALARM_COMMAND_TOPIC = 'arcus/alarm/set';
-const ALARM_AVAILABILITY_TOPIC = 'arcus/alarm/availability';
-const ALARM_ATTRIBUTES_TOPIC = 'arcus/alarm/attributes';
+/** Alarm topics: arcus/alarm/state, arcus/alarm/set, ... */
+function alarmTopics(config: Config) {
+  const base = `${config.deviceIdPrefix}/alarm`;
+  return {
+    state: `${base}/state`,
+    command: `${base}/set`,
+    availability: `${base}/availability`,
+    attributes: `${base}/attributes`,
+  };
+}
 
 /** Resolves a device address to its display name */
 export type DeviceNameLookup = (address: string) => string;
@@ -31,20 +37,21 @@ function mapAlarmState(alarm: AlarmState): string {
 }
 
 export function publishAlarmDiscovery(mqtt: Mqtt, config: Config): void {
+  const topics = alarmTopics(config);
   const topic = discoveryTopic(config, 'alarm_control_panel', 'alarm');
   const payload = {
     name: 'Security Alarm',
     unique_id: `${config.deviceIdPrefix}_alarm`,
     object_id: `${config.deviceIdPrefix}_alarm`,
-    state_topic: ALARM_STATE_TOPIC,
-    command_topic: ALARM_COMMAND_TOPIC,
+    state_topic: topics.state,
+    command_topic: topics.command,
     // Available only while both the bridge's Arcus connection and the alarm state fetch are good
     availability: [
       { topic: bridgeAvailabilityTopic(config), payload_available: 'online', payload_not_available: 'offline' },
-      { topic: ALARM_AVAILABILITY_TOPIC, payload_available: 'online', payload_not_available: 'offline' },
+      { topic: topics.availability, payload_available: 'online', payload_not_available: 'offline' },
     ],
     availability_mode: 'all',
-    json_attributes_topic: ALARM_ATTRIBUTES_TOPIC,
+    json_attributes_topic: topics.attributes,
     supported_features: ['arm_home', 'arm_away'],
     code_arm_required: false,
     code_disarm_required: false,
@@ -64,11 +71,11 @@ export function publishAlarmDiscovery(mqtt: Mqtt, config: Config): void {
     name: 'Bypassed sensors',
     unique_id: `${config.deviceIdPrefix}_alarm_bypassed`,
     object_id: `${config.deviceIdPrefix}_alarm_bypassed`,
-    state_topic: ALARM_ATTRIBUTES_TOPIC,
+    state_topic: topics.attributes,
     value_template: '{{ value_json.bypassed }}',
     payload_on: 'ON',
     payload_off: 'OFF',
-    json_attributes_topic: ALARM_ATTRIBUTES_TOPIC,
+    json_attributes_topic: topics.attributes,
     json_attributes_template: '{{ {"bypassed_sensors": value_json.bypassed_sensors} | tojson }}',
     device_class: 'problem',
     availability: payload.availability,
@@ -77,34 +84,35 @@ export function publishAlarmDiscovery(mqtt: Mqtt, config: Config): void {
   });
 }
 
-export function publishAlarmState(mqtt: Mqtt, alarm: AlarmState, nameOf: DeviceNameLookup): void {
+export function publishAlarmState(mqtt: Mqtt, config: Config, alarm: AlarmState, nameOf: DeviceNameLookup): void {
+  const topics = alarmTopics(config);
   const state = mapAlarmState(alarm);
 
   // Bypasses only matter while the alarm is (being) armed
   const bypassed = alarm.securityMode === 'DISARMED' ? [] : alarm.bypassedDevices.map(nameOf);
-  mqtt.publish(ALARM_ATTRIBUTES_TOPIC, JSON.stringify({
+  mqtt.publish(topics.attributes, JSON.stringify({
     bypassed: bypassed.length > 0 ? 'ON' : 'OFF',
     bypassed_sensors: bypassed,
   }), true);
 
-  mqtt.publish(ALARM_STATE_TOPIC, state, true);
+  mqtt.publish(topics.state, state, true);
 }
 
-export function publishAlarmAvailability(mqtt: Mqtt, online: boolean): void {
-  mqtt.publish(ALARM_AVAILABILITY_TOPIC, online ? 'online' : 'offline', true);
+export function publishAlarmAvailability(mqtt: Mqtt, config: Config, online: boolean): void {
+  mqtt.publish(alarmTopics(config).availability, online ? 'online' : 'offline', true);
 }
 
-export function setupAlarmCommandHandler(mqtt: Mqtt, client: ArcusClient, nameOf: DeviceNameLookup): void {
+export function setupAlarmCommandHandler(mqtt: Mqtt, config: Config, client: ArcusClient, nameOf: DeviceNameLookup): void {
   const refreshState = async () => {
     try {
       const state = await client.getAlarmState();
-      publishAlarmState(mqtt, state, nameOf);
+      publishAlarmState(mqtt, config, state, nameOf);
     } catch (err) {
       console.error('[Alarm] Failed to refresh state:', err);
     }
   };
 
-  mqtt.subscribe(ALARM_COMMAND_TOPIC, (_topic, command) => {
+  mqtt.subscribe(alarmTopics(config).command, (_topic, command) => {
     switch (command) {
       case 'ARM_AWAY':
         console.log('[Alarm] Command: ARM_AWAY');

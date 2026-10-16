@@ -81,11 +81,11 @@ async function fullSync(
   publishAlarmDiscovery(mqtt, config);
   try {
     const alarmState = await client.getAlarmState();
-    publishAlarmState(mqtt, alarmState, (address) => devices.get(address)?.name ?? address);
-    publishAlarmAvailability(mqtt, true);
+    publishAlarmState(mqtt, config, alarmState, (address) => devices.get(address)?.name ?? address);
+    publishAlarmAvailability(mqtt, config, true);
   } catch (err) {
     console.error('[Sync] Alarm state fetch error:', err);
-    publishAlarmAvailability(mqtt, false);
+    publishAlarmAvailability(mqtt, config, false);
   }
 
   // Sync scenes: refresh list + publish discovery
@@ -176,9 +176,9 @@ export async function startSync(
 
   // Set up alarm command handling and event listening
   const deviceName = (address: string) => devices.get(address)?.name ?? address;
-  setupAlarmCommandHandler(mqtt, client, deviceName);
+  setupAlarmCommandHandler(mqtt, config, client, deviceName);
   client.onAlarmEvent((alarmState) => {
-    publishAlarmState(mqtt, alarmState, deviceName);
+    publishAlarmState(mqtt, config, alarmState, deviceName);
     console.log(`[Sync] Real-time alarm update: ${alarmState.securityMode}`);
   });
 

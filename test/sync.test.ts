@@ -45,8 +45,14 @@ class FakeClient implements ArcusClient {
   async getAlarmState(): Promise<AlarmState> {
     return { ...this.alarm };
   }
-  async armAlarm(): Promise<void> {}
-  async disarmAlarm(): Promise<void> {}
+  /** Arm modes and 'DISARM', in the order they were sent */
+  readonly alarmCommands: string[] = [];
+  async armAlarm(mode: 'ON' | 'PARTIAL'): Promise<void> {
+    this.alarmCommands.push(mode);
+  }
+  async disarmAlarm(): Promise<void> {
+    this.alarmCommands.push('DISARM');
+  }
   onAlarmEvent(): void {}
   async listScenes(): Promise<SceneInfo[]> {
     return this.scenes;
@@ -250,6 +256,50 @@ describe('sync', () => {
         c.alarm = { securityMode: 'DISARMED', alarmMode: 'ON', bypassedDevices: ['DRIV:dev:door-1'] };
       });
       assert.deepEqual(broker.json('arcus/alarm/attributes'), { bypassed: 'OFF', bypassed_sensors: [] });
+    });
+  });
+
+  describe('device ID prefix', () => {
+    it('keeps the alarm on arcus/alarm/... by default', async () => {
+      const { broker } = await start();
+      const panel = broker.json('homeassistant/alarm_control_panel/arcus/alarm/config');
+      assert.equal(panel.state_topic, 'arcus/alarm/state');
+      assert.equal(panel.command_topic, 'arcus/alarm/set');
+      assert.equal(panel.json_attributes_topic, 'arcus/alarm/attributes');
+      assert.deepEqual((panel.availability as Array<{ topic: string }>).map(a => a.topic),
+        ['arcus/bridge/availability', 'arcus/alarm/availability']);
+    });
+
+    it('keeps two places on one broker apart, including their alarms', async () => {
+      // Two bridges, each with its own broker connection, as two containers would run
+      const scene = (place: string) => ({ address: `SERV:scene:${place}.1`, id: `${place}.1`, name: 'Night', enabled: true });
+      const house = new FakeClient();
+      house.devices = [contact()];
+      house.hub = hub();
+      house.scenes = [scene('place-a')];
+      const barn = new FakeClient();
+      barn.devices = [lock()];
+      barn.hub = makeDevice('SERV:hub:LWW-2', ['base', 'hub', 'hubconn'], { 'hubconn:state': 'ONLINE' }, 'Barn Hub');
+      barn.scenes = [scene('place-b')];
+      barn.alarm = { securityMode: 'ARMED', alarmMode: 'ON', bypassedDevices: [] };
+
+      const houseBroker = new FakeMqtt();
+      const barnBroker = new FakeMqtt();
+      const syncs = [
+        await startSync(houseBroker, testConfig(), house),
+        await startSync(barnBroker, testConfig({ deviceIdPrefix: 'barn' }), barn),
+      ];
+      stop = () => syncs.forEach(s => s.stop());
+
+      const houseTopics = new Set(houseBroker.published.map(p => p.topic));
+      assert.deepEqual(barnBroker.published.map(p => p.topic).filter(t => houseTopics.has(t)), []);
+      assert.equal(houseBroker.retained.get('arcus/alarm/state'), 'disarmed');
+      assert.equal(barnBroker.retained.get('barn/alarm/state'), 'armed_away');
+
+      // HA disarming the barn: the broker delivers it to both connections
+      for (const broker of [houseBroker, barnBroker]) broker.deliver('barn/alarm/set', 'DISARM');
+      assert.deepEqual(barn.alarmCommands, ['DISARM']);
+      assert.deepEqual(house.alarmCommands, []);
     });
   });
 });

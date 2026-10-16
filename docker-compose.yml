@@ -17,3 +17,11 @@ services:
     env_file: .env
     depends_on: [mosquitto]
     restart: unless-stopped
+
+  # A second Arcus place, such as another building's hub (see README): copy .env to
+  # .env.second, set the place and a different DEVICE_ID_PREFIX there, and uncomment
+  # arcus-mqtt-second:
+  #   build: .
+  #   env_file: .env.second
+  #   depends_on: [mosquitto]
+  #   restart: unless-stopped
