@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2
+
+- Jammed locks now show as jammed in Home Assistant and HomeKit, instead of locking.
+
 ## 0.2.1
 
 - Smart vents: open, close or set how far open, with obstruction and duct pressure sensors.
