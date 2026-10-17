@@ -26,16 +26,18 @@ describe('PlatformArcusClient', () => {
   }
 
   describe('attributes', () => {
-    it("keeps attributes from the device's own capabilities, including string lists", async () => {
+    it("keeps attributes from the device's own capabilities, including string lists and maps", async () => {
       const { client } = await connect((req) => req.messageType === 'place:ListDevices'
         ? { messageType: 'place:ListDevicesResponse', attributes: { devices: [{
             'base:address': 'DRIV:dev:d1',
-            'base:caps': ['base', 'dev', 'motdoor', 'leakh2o', 'therm'],
+            'base:caps': ['base', 'dev', 'devadv', 'motdoor', 'leakh2o', 'therm'],
             'dev:name': 'Garage',
             'motdoor:doorstate': 'OPEN',
             'leakh2o:state': 'LEAK',
             'therm:supportedmodes': ['HEAT', 'COOL'],
             'therm:schedule': [{ not: 'strings' }],
+            'devadv:errors': { ERR_OBSTRUCTION: 'Door obstructed' },
+            'devadv:protocolAttrs': { nested: { not: 'strings' } },
             'swit:state': 'ON',
           }] } }
         : undefined);
@@ -47,6 +49,8 @@ describe('PlatformArcusClient', () => {
       assert.equal(device.attributes['leakh2o:state'], 'LEAK');
       assert.deepEqual(device.attributes['therm:supportedmodes'], ['HEAT', 'COOL']);
       assert.equal('therm:schedule' in device.attributes, false, 'kept a non-string list');
+      assert.deepEqual(device.attributes['devadv:errors'], { ERR_OBSTRUCTION: 'Door obstructed' });
+      assert.equal('devadv:protocolAttrs' in device.attributes, false, 'kept a non-string map');
       assert.equal('swit:state' in device.attributes, false, 'kept an attribute from a capability the device lacks');
     });
 
@@ -80,9 +84,10 @@ describe('PlatformArcusClient', () => {
       client.onDeviceEvent((address, attrs) => events.push([address, attrs]));
       await client.connect();
 
-      server.sendEvent('DRIV:dev:d1', 'base:ValueChange', { 'devconn:state': 'OFFLINE', 'therm:supportedmodes': ['HEAT'] });
+      const changes = { 'devconn:state': 'OFFLINE', 'therm:supportedmodes': ['HEAT'], 'devadv:errors': {} };
+      server.sendEvent('DRIV:dev:d1', 'base:ValueChange', changes);
       await until(() => events.length === 1, 2000, 'value change');
-      assert.deepEqual(events[0], ['DRIV:dev:d1', { 'devconn:state': 'OFFLINE', 'therm:supportedmodes': ['HEAT'] }]);
+      assert.deepEqual(events[0], ['DRIV:dev:d1', changes]);
     });
   });
 

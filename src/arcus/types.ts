@@ -1,5 +1,8 @@
-/** A single Arcus attribute value; lists are kept only when they hold strings (e.g. therm:supportedmodes) */
-export type ArcusAttributeValue = string | number | boolean | string[];
+/**
+ * A single Arcus attribute value; lists are kept only when they hold strings (e.g. therm:supportedmodes),
+ * and maps only when their values are strings (e.g. devadv:errors)
+ */
+export type ArcusAttributeValue = string | number | boolean | string[] | Record<string, string>;
 
 /** A key-value map of Arcus capability attributes, e.g. { "swit:state": "ON" } */
 export type ArcusAttributes = Record<string, ArcusAttributeValue>;
@@ -7,7 +10,8 @@ export type ArcusAttributes = Record<string, ArcusAttributeValue>;
 /** Narrow a raw platform value to a supported attribute value */
 export function isAttributeValue(value: unknown): value is ArcusAttributeValue {
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return true;
-  return Array.isArray(value) && value.every(v => typeof v === 'string');
+  if (Array.isArray(value)) return value.every(v => typeof v === 'string');
+  return typeof value === 'object' && value !== null && Object.values(value).every(v => typeof v === 'string');
 }
 
 /** A capability method call on a device, e.g. irrcont:WaterNowV2 with { zone: 'z1', duration: 10 } */

@@ -85,6 +85,24 @@ describe('lock mapper', () => {
     assert.deepEqual(lockMapper.buildState(config, device), { lock: 'UNLOCKING' });
   });
 
+  it('reports a jam while Arcus has WARN_JAM, whatever the lockstate', () => {
+    const device = makeDevice('DRIV:dev:l1', ['doorlock', 'devadv'], {
+      'doorlock:lockstate': 'LOCKING',
+      'devadv:errors': { WARN_JAM: 'Door lock may be jammed' },
+    });
+    const [disc] = lockMapper.buildDiscovery(config, device);
+    assert.equal(disc.payload.state_jammed, 'JAMMED');
+    assert.deepEqual(lockMapper.buildState(config, device), { lock: 'JAMMED' });
+
+    // An autolock jam leaves the lock UNLOCKED but still jammed
+    device.attributes['doorlock:lockstate'] = 'UNLOCKED';
+    assert.deepEqual(lockMapper.buildState(config, device), { lock: 'JAMMED' });
+
+    // The driver clears the error once the lock reports a final state
+    Object.assign(device.attributes, { 'doorlock:lockstate': 'LOCKED', 'devadv:errors': {} });
+    assert.deepEqual(lockMapper.buildState(config, device), { lock: 'LOCKED' });
+  });
+
   it('translates lock commands', () => {
     const device = makeDevice('DRIV:dev:l1', ['doorlock']);
     assert.deepEqual(lockMapper.handleCommand(config, device, 'lock', 'UNLOCK'), { 'doorlock:lockstate': 'UNLOCKED' });
