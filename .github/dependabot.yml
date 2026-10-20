@@ -1,0 +1,32 @@
+# Weekly update PRs; CI runs on each one. Merging doesn't ship anything to
+# app users: that still takes a release (see README).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        update-types: [minor, patch]
+    ignore:
+      # Types follow the Node major in the Dockerfile; bump them together by hand
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    ignore:
+      # Node majors are moved by hand, with CI and @types/node
+      - dependency-name: node
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
