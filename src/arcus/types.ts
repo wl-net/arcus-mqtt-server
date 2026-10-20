@@ -32,6 +32,12 @@ export interface ArcusDevice {
   type: string;
   /** Set of capability namespaces this device supports */
   caps: Set<ArcusCapability>;
+  /**
+   * Capabilities the device has several of, by instance name (base:instances), e.g.
+   * { button1: ['but'], button2: ['but'] } on a remote. Their attributes carry the
+   * instance name: but:state:button1
+   */
+  instances?: Record<string, ArcusCapability[]>;
   /** Current attribute values across all capabilities */
   attributes: ArcusAttributes;
   /** Address of the hub this device pairs through (Zigbee/Z-Wave), if any */

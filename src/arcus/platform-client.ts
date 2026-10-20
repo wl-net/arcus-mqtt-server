@@ -5,25 +5,37 @@ import { isAttributeValue } from './types.js';
 import { BridgeClient, throwIfErrorResponse } from './bridge-client.js';
 import { SecuritySubsystem } from './capabilities.js';
 
+/** base:instances, e.g. { button1: ['but'] }, keeping only well-formed entries */
+function readInstances(value: unknown): Record<string, string[]> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, string[]] =>
+      Array.isArray(entry[1]) && entry[1].every(cap => typeof cap === 'string')),
+  );
+}
+
 function transformDevice(raw: Record<string, unknown>): ArcusDevice {
   const address = raw['base:address'] as string;
   const name = (raw['dev:name'] as string) ?? address;
   const type = (raw['dev:devtypehint'] as string) ?? 'Unknown';
   const rawCaps = (raw['base:caps'] as string[]) ?? [];
   const caps = new Set<string>(rawCaps);
+  const instances = readInstances(raw['base:instances']);
 
-  // Keep primitive attributes from the device's own capabilities. Filtering by
-  // base:caps (rather than a fixed namespace list) means a newly mapped capability
-  // can't silently lose its state on every sync.
+  // Keep primitive attributes from the device's own capabilities, and from its
+  // capability instances (but:state:button1 when base:instances has button1: ['but']).
+  // Filtering by base:caps (rather than a fixed namespace list) means a newly mapped
+  // capability can't silently lose its state on every sync.
   const attributes: ArcusAttributes = {};
   for (const [key, value] of Object.entries(raw)) {
-    const namespace = key.split(':')[0];
-    if (caps.has(namespace) && isAttributeValue(value)) {
+    const [namespace, , instance] = key.split(':');
+    const ownCap = caps.has(namespace) || (instance !== undefined && instances[instance]?.includes(namespace));
+    if (ownCap && isAttributeValue(value)) {
       attributes[key] = value;
     }
   }
 
-  return { address, name, type, caps, attributes };
+  return { address, name, type, caps, instances, attributes };
 }
 
 export class PlatformArcusClient implements ArcusClient {

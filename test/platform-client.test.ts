@@ -54,6 +54,32 @@ describe('PlatformArcusClient', () => {
       assert.equal('swit:state' in device.attributes, false, 'kept an attribute from a capability the device lacks');
     });
 
+    it('keeps attributes of capability instances, such as the buttons on a remote', async () => {
+      const { client } = await connect((req) => req.messageType === 'place:ListDevices'
+        ? { messageType: 'place:ListDevicesResponse', attributes: { devices: [{
+            'base:address': 'DRIV:dev:rm1',
+            'base:caps': ['base', 'dev', 'pres'],
+            'base:instances': { button1: ['but'], home: ['but'], broken: 'but' },
+            'but:state:button1': 'RELEASED',
+            'but:statechanged:home': 1700000000000,
+            'but:state:button9': 'RELEASED',
+            'but:state:broken': 'RELEASED',
+            'swit:state:button1': 'ON',
+            'pres:presence': 'PRESENT',
+          }] } }
+        : undefined);
+      await client.connect();
+
+      const [device] = await client.listDevices();
+      assert.deepEqual(device.instances, { button1: ['but'], home: ['but'] });
+      assert.equal(device.attributes['but:state:button1'], 'RELEASED');
+      assert.equal(device.attributes['but:statechanged:home'], 1700000000000);
+      assert.equal(device.attributes['pres:presence'], 'PRESENT');
+      assert.equal('but:state:button9' in device.attributes, false, 'kept an attribute of an unknown instance');
+      assert.equal('but:state:broken' in device.attributes, false, 'kept an attribute of a malformed instance');
+      assert.equal('swit:state:button1' in device.attributes, false, "kept an attribute of a capability the instance lacks");
+    });
+
     it('throws on a malformed device or scene list instead of returning nothing', async () => {
       const { client } = await connect((req) =>
         req.messageType === 'place:ListDevices' || req.messageType === 'scene:ListScenes'

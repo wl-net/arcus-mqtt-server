@@ -39,6 +39,16 @@ function supportsEco(device: ArcusDevice): boolean {
 }
 
 /**
+ * Emergency heat runs a heat pump's backup heater on its own. Drivers that report
+ * therm:emergencyheat also accept it: ON switches the thermostat to its emergency
+ * heat mode, OFF goes back to the mode it was in. HA's climate entity has no place
+ * for it, so it's a switch.
+ */
+function supportsEmergencyHeat(device: ArcusDevice): boolean {
+  return Thermostat.ATTR_EMERGENCYHEAT in device.attributes;
+}
+
+/**
  * Fan modes for HA. therm:fanmode is 0 for auto (fan runs only while heating or
  * cooling), or 1..maxfanspeed to run the fan continuously at that speed.
  *
@@ -89,7 +99,7 @@ function hvacAction(device: ArcusDevice): string {
   return temp <= (heat + cool) / 2 ? 'heating' : 'cooling';
 }
 
-/** Maps Arcus therm → HA climate */
+/** Maps Arcus therm → HA climate, plus an emergency heat switch where supported */
 export const climateMapper: Mapper = {
   matches(device: ArcusDevice): boolean {
     return device.caps.has(Thermostat.NAMESPACE);
@@ -142,7 +152,28 @@ export const climateMapper: Mapper = {
       payload.preset_mode_command_topic = commandTopic(config, device.address, 'climate_preset');
     }
 
-    return [{ topic: discoveryTopic(config, 'climate', objectId), payload }];
+    const configs: HADiscoveryConfig[] = [{ topic: discoveryTopic(config, 'climate', objectId), payload }];
+
+    if (supportsEmergencyHeat(device)) {
+      const switchId = `${id}_emergency_heat`;
+      configs.push({
+        topic: discoveryTopic(config, 'switch', switchId),
+        payload: {
+          name: 'Emergency heat',
+          unique_id: switchId,
+          object_id: switchId,
+          state_topic: state,
+          value_template: '{{ value_json.emergency_heat }}',
+          command_topic: commandTopic(config, device.address, 'emergency_heat'),
+          payload_on: 'ON',
+          payload_off: 'OFF',
+          device: buildDeviceInfo(config, device),
+          ...buildAvailability(config, device),
+        },
+      });
+    }
+
+    return configs;
   },
 
   buildState(_config: Config, device: ArcusDevice): Record<string, unknown> {
@@ -163,6 +194,9 @@ export const climateMapper: Mapper = {
       climate_action: hvacAction(device),
     };
     if (supportsEco(device)) state.climate_preset = eco ? ECO_PRESET : 'none';
+    if (supportsEmergencyHeat(device)) {
+      state.emergency_heat = device.attributes[Thermostat.ATTR_EMERGENCYHEAT] === Thermostat.EMERGENCYHEAT_ON ? 'ON' : 'OFF';
+    }
     return state;
   },
 
@@ -197,6 +231,11 @@ export const climateMapper: Mapper = {
         return { [Thermostat.ATTR_HEATSETPOINT]: parseFloat(payload) };
       case 'climate_cool_setpoint':
         return { [Thermostat.ATTR_COOLSETPOINT]: parseFloat(payload) };
+      case 'emergency_heat':
+        if (!supportsEmergencyHeat(device)) return null;
+        if (payload === 'ON') return { [Thermostat.ATTR_EMERGENCYHEAT]: Thermostat.EMERGENCYHEAT_ON };
+        if (payload === 'OFF') return { [Thermostat.ATTR_EMERGENCYHEAT]: Thermostat.EMERGENCYHEAT_OFF };
+        return null;
       default:
         return null;
     }

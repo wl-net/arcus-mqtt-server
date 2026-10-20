@@ -10,10 +10,11 @@ import { shadeMapper } from '../src/mappers/shade.js';
 import { lightMapper } from '../src/mappers/light.js';
 import { ventMapper } from '../src/mappers/vent.js';
 import { irrigationMapper } from '../src/mappers/irrigation.js';
+import { deviceTriggerMapper } from '../src/mappers/device-trigger.js';
 import { matchingMappers } from '../src/mappers/index.js';
 import type { Mapper } from '../src/mappers/index.js';
 import type { ArcusAttributes } from '../src/arcus/types.js';
-import { makeDevice, testConfig } from './helpers.js';
+import { FakeMqtt, makeDevice, testConfig } from './helpers.js';
 
 const config = testConfig();
 
@@ -29,6 +30,8 @@ describe('binary sensor mapper', () => {
     { cap: 'glass', attr: 'glass:break', on: 'DETECTED', off: 'SAFE', key: 'glass', deviceClass: 'safety' },
     // Tilt sensors sit on garage door panels: flat means the door is open
     { cap: 'tilt', attr: 'tilt:tiltstate', on: 'FLAT', off: 'UPRIGHT', key: 'tilt', deviceClass: 'garage_door' },
+    // Key fobs
+    { cap: 'pres', attr: 'pres:presence', on: 'PRESENT', off: 'ABSENT', key: 'presence', deviceClass: 'presence' },
   ];
 
   for (const c of cases) {
@@ -211,6 +214,85 @@ describe('climate mapper', () => {
       assert.deepEqual(cmd('auto'), { 'therm:fanmode': 0 });
       assert.equal(cmd('turbo'), null);
     });
+  });
+
+  describe('emergency heat', () => {
+    it('adds a switch only for thermostats that report emergency heat', () => {
+      assert.equal(discoveryById(climateMapper, thermostat({})).has('t1_emergency_heat'), false);
+      assert.equal('emergency_heat' in state({}), false);
+
+      const disc = discoveryById(climateMapper, thermostat({ 'therm:emergencyheat': 'OFF' })).get('t1_emergency_heat');
+      assert.equal(disc?.command_topic, 'arcus/t1/emergency_heat/set');
+      assert.equal(state({ 'therm:emergencyheat': 'OFF' }).emergency_heat, 'OFF');
+      assert.equal(state({ 'therm:emergencyheat': 'ON' }).emergency_heat, 'ON');
+    });
+
+    it('turns emergency heat on and off', () => {
+      const cmd = (attrs: ArcusAttributes, payload: string) =>
+        climateMapper.handleCommand(config, thermostat(attrs), 'emergency_heat', payload);
+      assert.deepEqual(cmd({ 'therm:emergencyheat': 'OFF' }, 'ON'), { 'therm:emergencyheat': 'ON' });
+      assert.deepEqual(cmd({ 'therm:emergencyheat': 'ON' }, 'OFF'), { 'therm:emergencyheat': 'OFF' });
+      assert.equal(cmd({ 'therm:emergencyheat': 'OFF' }, 'TOGGLE'), null);
+      assert.equal(cmd({}, 'ON'), null);
+    });
+  });
+});
+
+describe('device trigger mapper', () => {
+  const withButtons = (address: string, buttons: string[], caps: string[] = []) => ({
+    ...makeDevice(address, caps),
+    instances: Object.fromEntries(buttons.map(b => [b, ['but']])),
+  });
+  const triggers = (device: ReturnType<typeof makeDevice>) =>
+    deviceTriggerMapper.buildDiscovery(config, device).map(d => [d.payload.subtype, d.payload.payload]);
+
+  it('keeps one trigger for a single-button device', () => {
+    const device = makeDevice('DRIV:dev:bt1', ['but'], { 'but:state': 'RELEASED' });
+    assert.equal(deviceTriggerMapper.matches(device), true);
+    const [disc] = deviceTriggerMapper.buildDiscovery(config, device);
+    assert.equal(disc.topic, 'homeassistant/device_automation/arcus/bt1_button_press/config');
+    assert.deepEqual(triggers(device), [['button_1', 'PRESSED']]);
+  });
+
+  it('gives a multi-button remote a trigger per button, in order', () => {
+    const remote = withButtons('DRIV:dev:rm1', ['button10', 'button2', 'button1']);
+    assert.equal(deviceTriggerMapper.matches(remote), true);
+    assert.deepEqual(triggers(remote), [['button_1', 'button1'], ['button_2', 'button2'], ['button_10', 'button10']]);
+    assert.equal(
+      deviceTriggerMapper.buildDiscovery(config, remote)[0].topic,
+      'homeassistant/device_automation/arcus/rm1_button1_press/config',
+    );
+  });
+
+  it('names key fob and paddle buttons after their Arcus instances', () => {
+    assert.deepEqual(triggers(withButtons('DRIV:dev:fob1', ['home', 'away', 'a', 'b'], ['pres'])),
+      [['a', 'a'], ['away', 'away'], ['b', 'b'], ['home', 'home']]);
+    assert.deepEqual(triggers(withButtons('DRIV:dev:pd1', ['up', 'down'])), [['down', 'down'], ['up', 'up']]);
+  });
+
+  it('ignores instances of other capabilities', () => {
+    const strip = { ...makeDevice('DRIV:dev:ps1', ['swit']), instances: { outlet1: ['swit'] } };
+    assert.equal(deviceTriggerMapper.matches(strip), false);
+  });
+
+  it('publishes the pressed button, not releases or other attributes', () => {
+    const mqtt = new FakeMqtt();
+    const remote = withButtons('DRIV:dev:rm1', ['button1', 'button2']);
+    const event = (attrs: ArcusAttributes) => deviceTriggerMapper.onEvent?.(mqtt, config, remote, attrs);
+
+    event({ 'but:state:button2': 'PRESSED', 'but:statechanged:button2': 1700000000000 });
+    event({ 'but:state:button2': 'RELEASED' });
+    event({ 'but:state:button9': 'PRESSED' });
+    event({ 'but:state': 'PRESSED' });
+
+    assert.deepEqual(mqtt.published, [{ topic: 'arcus/rm1/trigger', payload: 'button2', retain: false }]);
+  });
+
+  it('publishes PRESSED for a single-button device', () => {
+    const mqtt = new FakeMqtt();
+    const button = makeDevice('DRIV:dev:bt1', ['but']);
+    deviceTriggerMapper.onEvent?.(mqtt, config, button, { 'but:state': 'PRESSED' });
+    assert.deepEqual(mqtt.published, [{ topic: 'arcus/bt1/trigger', payload: 'PRESSED', retain: false }]);
   });
 });
 

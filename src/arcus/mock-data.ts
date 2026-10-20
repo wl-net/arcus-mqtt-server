@@ -5,7 +5,7 @@ import {
   MotorizedDoor, Smoke, CarbonMonoxide, Glass, Tilt, PowerUse,
   Hub, HubConnection, HubPower, DeviceAdvanced,
   Color, ColorTemperature, Light, Valve, Shade, Vent,
-  IrrigationController, IrrigationZone,
+  IrrigationController, IrrigationZone, Presence,
 } from './capabilities.js';
 
 export function createMockDevices(): ArcusDevice[] {
@@ -83,6 +83,7 @@ export function createMockDevices(): ArcusDevice[] {
         [Thermostat.ATTR_ACTIVE]: Thermostat.ACTIVE_RUNNING,
         [Thermostat.ATTR_SUPPORTEDMODES]: ['OFF', 'HEAT', 'COOL', 'AUTO', 'ECO'],
         [Thermostat.ATTR_FANMODE]: 0,
+        [Thermostat.ATTR_EMERGENCYHEAT]: Thermostat.EMERGENCYHEAT_OFF,
         [Thermostat.ATTR_MAXFANSPEED]: 1,
         [Temperature.ATTR_TEMPERATURE]: 20.5,
         [RelativeHumidity.ATTR_HUMIDITY]: 42,
@@ -326,16 +327,41 @@ export function createMockDevices(): ArcusDevice[] {
       },
     },
 
-    // --- Button (key fob) ---
+    // --- Button (single button) ---
     {
       address: 'DRIV:dev:button-001',
-      name: 'Iris Key Fob',
-      type: 'Iris Smart Fob',
+      name: 'Smart Button',
+      type: 'Button',
       caps: new Set([Base.NAMESPACE, Device.NAMESPACE, DevicePower.NAMESPACE, Button.NAMESPACE]),
       attributes: {
+        [Button.ATTR_STATE]: Button.STATE_RELEASED,
         [DevicePower.ATTR_SOURCE]: DevicePower.SOURCE_BATTERY,
         [DevicePower.ATTR_BATTERY]: 80,
         [Device.ATTR_DEVTYPEHINT]: 'Button',
+      },
+    },
+
+    // --- Key fob (four buttons as Button instances, plus presence) ---
+    {
+      address: 'DRIV:dev:keyfob-001',
+      name: 'Key Fob',
+      type: 'Keyfob',
+      caps: new Set([Base.NAMESPACE, Device.NAMESPACE, DevicePower.NAMESPACE, Presence.NAMESPACE]),
+      instances: {
+        home: [Button.NAMESPACE],
+        away: [Button.NAMESPACE],
+        a: [Button.NAMESPACE],
+        b: [Button.NAMESPACE],
+      },
+      attributes: {
+        [`${Button.ATTR_STATE}:home`]: Button.STATE_RELEASED,
+        [`${Button.ATTR_STATE}:away`]: Button.STATE_RELEASED,
+        [`${Button.ATTR_STATE}:a`]: Button.STATE_RELEASED,
+        [`${Button.ATTR_STATE}:b`]: Button.STATE_RELEASED,
+        [Presence.ATTR_PRESENCE]: Presence.PRESENCE_PRESENT,
+        [DevicePower.ATTR_SOURCE]: DevicePower.SOURCE_BATTERY,
+        [DevicePower.ATTR_BATTERY]: 65,
+        [Device.ATTR_DEVTYPEHINT]: 'Keyfob',
       },
     },
   ];

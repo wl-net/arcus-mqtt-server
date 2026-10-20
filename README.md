@@ -23,7 +23,7 @@ Arcus Platform ──► Arcus MQTT Server ──► MQTT broker ◄── Home 
 |--------|-------------|--------------|
 | Switch | `switch` | On/off control |
 | Dimmer / bulb | `light` | On/off, brightness; color (hue/saturation) and color temperature for bulbs that support them |
-| Thermostat | `climate` | Mode, setpoints, current temp, heating/cooling/idle, fan (off/on or speeds), ECO preset |
+| Thermostat | `climate`, `switch` | Mode, setpoints, current temp, heating/cooling/idle, fan (off/on or speeds), ECO preset; emergency heat switch where the driver supports it |
 | Contact sensor | `binary_sensor` | Door/window open/closed |
 | Motion sensor | `binary_sensor` | Motion detected/clear |
 | Leak sensor | `binary_sensor` | Water leak detected/safe |
@@ -33,7 +33,7 @@ Arcus Platform ──► Arcus MQTT Server ──► MQTT broker ◄── Home 
 | Tilt sensor | `binary_sensor` | Garage door open (flat)/closed (upright) |
 | Power meter | `sensor` | Power (W) and cumulative energy (Wh) |
 | Hub | `binary_sensor`, `sensor` | Hub connectivity, mains power (off = running on battery), battery level |
-| Door lock | `lock` | Lock/unlock, locking/unlocking |
+| Door lock | `lock` | Lock/unlock, locking/unlocking, jammed |
 | Garage door opener | `cover` (garage) | Open/close, opening/closing |
 | Water valve | `valve` (water) | Open/close, opening/closing |
 | Irrigation controller | `valve` (water) + `number` per zone | Water or stop each zone; watering time per zone, used when a zone is opened |
@@ -42,7 +42,8 @@ Arcus Platform ──► Arcus MQTT Server ──► MQTT broker ◄── Home 
 | Temperature | `sensor` | Temperature reading |
 | Humidity | `sensor` | Humidity reading |
 | Battery | `sensor` | Battery percentage |
-| Button/fob | `device_automation` | Button press triggers |
+| Button / remote | `device_automation` | A trigger per button, including each button on multi-button remotes and scene controllers |
+| Key fob | `device_automation`, `binary_sensor` | A trigger per button; presence (home/away) |
 | Alarm | `alarm_control_panel` | Arm home/away, disarm |
 | Alarm bypass | `binary_sensor` | On while armed with sensors bypassed; lists them by name |
 | Scenes | `button` + `device_automation` | Fire scenes, scene triggers |
@@ -63,7 +64,7 @@ The app gets Mosquitto's address and login from Home Assistant, so there are no 
 
 ### Upgrading from 0.1.0
 
-0.1.0 ran its own broker, which only supported MQTT 3.1.1; Home Assistant requires MQTT 5. Before updating to 0.2.0:
+0.1.0 ran its own broker, which only supported MQTT 3.1.1; Home Assistant requires MQTT 5. Before updating to 0.2.0 or later:
 
 1. Install the **Mosquitto broker** app and start it
 2. Go to **Settings → Devices & services → MQTT → ⋮ → Reconfigure**. Set the broker to `core-mosquitto`, port `1883`, with a login: a Home Assistant user, or one added to the Mosquitto app's `logins`. Arcus devices are unavailable from here until step 3
@@ -100,6 +101,8 @@ Leave the first server's prefix as it is: changing it makes Home Assistant see n
 The Home Assistant app handles one place, since an app can only be installed once.
 
 ## Running Locally
+
+Needs Node.js 24, the version in the Docker image.
 
 ```bash
 npm install
@@ -152,7 +155,7 @@ npm start
 
 ## Configuration
 
-All configuration is via environment variables. As a Home Assistant app, set them on the app's **Configuration** tab instead: the server reads them from `/data/options.json`, and variables already set in the environment take precedence.
+All configuration is via environment variables. The Home Assistant app offers the `ARCUS_*` settings on its **Configuration** tab instead, which the server reads from `/data/options.json` (variables already set in the environment take precedence). The app gets its MQTT settings from Home Assistant and uses the defaults for the rest.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -174,6 +177,9 @@ All configuration is via environment variables. As a Home Assistant app, set the
 
 - **Alarm bypass notifications.** Arming with a door or window open arms around it (Arcus "arm bypassed"). The **Bypassed sensors** binary sensor on the *Arcus Security* device turns on when that happens, and its `bypassed_sensors` attribute lists the sensors. Trigger a notification automation on it turning on.
 - **Thermostat fan.** Arcus fans have two states: run only while heating or cooling, or run all the time. They appear as **off** and **on** (or off/low/medium/high for multi-speed fans), because HomeKit's fan toggle needs an "off" mode. "Off" still runs the fan during heating and cooling.
+- **Buttons.** Each button press fires a device trigger: in an automation, choose the remote as the device, then the button. Arcus only reports presses, so holds and double presses can't be told apart from single presses.
+- **Key fob presence.** A fob shows as away once the hub hasn't heard from it for a while (10 minutes for Iris fobs), and home again as soon as it's heard.
+- **Emergency heat.** Thermostats whose Arcus driver supports emergency heat get an **Emergency heat** switch. On, the thermostat runs only its backup heat, as a heat pump needs when it's too cold outside for the compressor; off, it goes back to its previous mode. The switch appears whether or not the thermostat controls a heat pump, so disable it in Home Assistant if you don't need it.
 - **HomeKit.** HomeKit Bridge sets up an accessory's controls when it creates it. After updating this server, reload HomeKit Bridge (**Settings → Devices & Services → HomeKit Bridge → ⋮ → Reload**) so changes such as new fan modes reach HomeKit. If an accessory still misbehaves, use the `homekit.reset_accessory` action on it.
 - **Removed devices.** Devices, scenes and entities removed in Arcus are removed from Home Assistant on the next sync. This only works for devices the server has seen since it last started: anything removed while it was down stays in Home Assistant as unavailable, and must be deleted there by hand.
 
@@ -205,12 +211,12 @@ src/
     ├── index.ts          # Mapper interface & registry
     ├── switch.ts         # swit → switch
     ├── light.ts          # dim/color/colortemp → light
-    ├── climate.ts        # therm → climate
-    ├── binary-sensor.ts  # cont/mot/leakh2o/smoke/co/glass/tilt → binary_sensor
+    ├── climate.ts        # therm → climate, emergency heat switch
+    ├── binary-sensor.ts  # cont/mot/leakh2o/smoke/co/glass/tilt/pres → binary_sensor
     ├── lock.ts           # doorlock → lock
     ├── cover.ts          # motdoor → cover (garage)
     ├── sensor.ts         # temp/humid/battery/pow → sensor
-    ├── device-trigger.ts # but → device_automation
+    ├── device-trigger.ts # but, one per button → device_automation
     ├── hub.ts            # hub connectivity/power/battery → binary_sensor, sensor
     ├── valve.ts          # valv → valve
     ├── shade.ts          # shade → cover
@@ -227,7 +233,7 @@ Each device type is handled by a mapper that implements four methods:
 - **`buildState(config, device)`** — extract state from device attributes
 - **`handleCommand(config, device, entity, payload)`** — translate HA command → Arcus attributes
 
-Mappers whose commands are Arcus method calls rather than attribute changes, such as starting irrigation, also implement **`handleMethodCommand`**.
+Mappers whose commands are Arcus method calls rather than attribute changes, such as starting irrigation, also implement **`handleMethodCommand`**. Mappers that act on live events rather than state, such as button presses, implement **`onEvent`**.
 
 A single device can match multiple mappers. For example, a thermostat matches both the climate mapper and the sensor mapper (for temperature/humidity readings). State from all matching mappers is merged into one JSON topic per device.
 
@@ -248,7 +254,7 @@ arcus/bridge/availability            # Arcus connection is up
 arcus/{device_id}/availability       # device is online (devconn:state)
 arcus/{hub_id}/connection            # hub is connected (hubconn:state)
 
-# Button presses (not retained)
+# Button presses (not retained): PRESSED, or the button's name on multi-button devices
 arcus/{device_id}/trigger
 
 # Alarm
@@ -285,7 +291,7 @@ With the [Docker install](#install-with-docker), check out your branch and run `
 
 With the app, run local changes against its Mosquitto app without releasing them:
 
-1. Copy `.env.example` to `.env` and fill it in. Set `MQTT_URL` to `mqtt://homeassistant.local:1883`, with a login from the Mosquitto app's `logins` setting or a Home Assistant user. The Mosquitto app must publish port 1883, which it does by default
+1. Copy `.env.example` to `.env` and fill it in. Set `MQTT_URL` to `mqtt://homeassistant.local:1883`, with a login from the Mosquitto app's `logins` setting or a Home Assistant user. The Mosquitto app must publish port 1883: if you turned it off (see the security note under [Install as a Home Assistant App](#install-as-a-home-assistant-app)), turn it back on while testing
 2. Stop the Arcus MQTT app in Home Assistant, so commands don't reach Arcus twice
 3. Run `docker compose up --build --no-deps arcus-mqtt`, which leaves out the compose file's own Mosquitto
 4. When you're done, press Ctrl-C and start the app again
@@ -296,9 +302,10 @@ Entities keep their IDs, so Home Assistant shows the local build's devices in pl
 
 The Home Assistant app pulls `ghcr.io/wl-net/arcus-mqtt-server:<version>`, where `<version>` is `version` in `arcus_mqtt/config.yaml`.
 
-1. Bump `version` in `arcus_mqtt/config.yaml` and commit
-2. Tag it `v<version>` and push the tag: `git tag v0.2.0 && git push origin v0.2.0`
-3. Push `main` once the release workflow has finished
+1. Set the new version in `arcus_mqtt/config.yaml` and in `package.json` (`npm version <version> --no-git-tag-version`)
+2. Add an entry to `arcus_mqtt/CHANGELOG.md`, which Home Assistant shows in its update dialog, and commit
+3. Tag the commit and push the tag: `git tag -a v<version> -m <version> && git push origin v<version>`
+4. Push `main` once the release workflow has finished
 
 The release workflow runs the tests, checks that the tag matches `version`, and pushes the amd64 and arm64 image tagged `<version>` and `latest`. Home Assistant offers the update once the new `version` reaches `main`, and the update fails until the image exists, which is why `main` goes last.
 
