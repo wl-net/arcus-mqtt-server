@@ -33,7 +33,7 @@ Arcus Platform ──► Arcus MQTT Server ──► MQTT broker ◄── Home 
 | Tilt sensor | `binary_sensor` | Garage door open (flat)/closed (upright) |
 | Power meter | `sensor` | Power (W) and cumulative energy (Wh) |
 | Hub | `binary_sensor`, `sensor` | Hub connectivity, mains power (off = running on battery), battery level |
-| Door lock | `lock`, `button` | Lock/unlock, locking/unlocking, jammed; buzz in where the lock supports it |
+| Door lock | `lock`; `button`, `switch` with [optional features](#optional-features) | Lock/unlock, locking/unlocking, jammed; optionally buzz in, and adding or removing each person's PIN |
 | Garage door opener | `cover` (garage) | Open/close, opening/closing |
 | Water valve | `valve` (water) | Open/close, opening/closing |
 | Irrigation controller | `valve` (water) + `number` per zone | Water or stop each zone; watering time per zone, used when a zone is opened |
@@ -155,7 +155,7 @@ npm start
 
 ## Configuration
 
-All configuration is via environment variables. The Home Assistant app offers the `ARCUS_*` settings on its **Configuration** tab instead, which the server reads from `/data/options.json` (variables already set in the environment take precedence). The app gets its MQTT settings from Home Assistant and uses the defaults for the rest.
+All configuration is via environment variables. The Home Assistant app offers the `ARCUS_*` settings and `FEATURES` on its **Configuration** tab instead, which the server reads from `/data/options.json` (variables already set in the environment take precedence). The app gets its MQTT settings from Home Assistant and uses the defaults for the rest.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -172,6 +172,63 @@ All configuration is via environment variables. The Home Assistant app offers th
 | `ARCUS_PASSWORD` | — | Platform password (client-bridge mode) |
 | `ARCUS_AUTH_TOKEN` | — | Auth token, alternative to username/password |
 | `ARCUS_PLACE_ID` | — | Place ID (required for client-bridge, optional for api-server) |
+| `FEATURES` | — | [Optional features](#optional-features) to turn on, comma-separated, e.g. `buzz_in,lock_access` |
+
+## Optional features
+
+Some features are off unless you list them in `FEATURES`, comma-separated, such as `FEATURES=buzz_in,lock_access`. In the app, enter the same list in the **FEATURES** option and restart the app.
+
+Turning a feature off stops its commands, but its entities stay in Home Assistant, doing nothing, until you delete them there (see **Removed devices** under [Notes](#notes)).
+
+### `buzz_in`: Buzz in
+
+Locks that support it get a **Buzz in** button. It unlocks a locked door, and the lock locks itself again shortly after (45 seconds on Schlage deadbolts). It does nothing if the door is already unlocked.
+
+HomeKit asks you to unlock your iPhone before it unlocks a lock, but HomeKit Bridge turns buttons into switches, which have no such check. Leave this button out of HomeKit Bridge unless you want that.
+
+### `lock_access`: Lock access
+
+Each lock gets a switch per person, such as **Dog Walker access**, that's on while that person's PIN is on the lock. Turn it on to add their PIN to the lock, off to remove it. With a schedule in Home Assistant, this gives you timed access, which Arcus doesn't have.
+
+How Arcus handles PINs:
+
+- PINs belong to people, not locks. Each person at a place has one 4-digit PIN, which you set in the Arcus app. For someone who shouldn't have the app, such as a dog walker, add a person without a login and give them a PIN
+- Everyone with a PIN at the place gets a switch on every lock. Someone whose PIN is already on a lock keeps that lock's switch even without a PIN, so you can remove it. New people show up within 5 minutes
+- Arcus keypads accept any person's PIN at the place, so a PIN you add for a door also disarms the alarm at a keypad
+- Arcus doesn't record which person's PIN opened the lock
+
+The switch turns on as soon as Arcus starts adding the PIN, and turns off only once the lock reports the PIN removed. If the lock or hub is offline, the PIN stays on and so does the switch.
+
+The switches are configuration entities, so dashboards and HomeKit Bridge leave them out unless you add them.
+
+For timed access, create a **Schedule** helper for the person (**Settings → Devices & services → Helpers**), then turn their switch on and off with it. Use your switch's entity ID, from its settings, in place of the one below:
+
+```yaml
+automation:
+  - alias: Dog walker's front door PIN
+    triggers:
+      - trigger: state
+        entity_id: schedule.dog_walker
+        to: ["on", "off"]
+    actions:
+      - action: "switch.turn_{{ trigger.to_state.state }}"
+        target:
+          entity_id: switch.front_door_dog_walker_access
+  - alias: Dog walker's PIN is still on the front door
+    triggers:
+      - trigger: state
+        entity_id: schedule.dog_walker
+        to: "off"
+        for: "00:05:00"
+    conditions:
+      - condition: state
+        entity_id: switch.front_door_dog_walker_access
+        state: "on"
+    actions:
+      - action: notify.notify
+        data:
+          message: The dog walker's PIN is still on the front door
+```
 
 ## Notes
 
@@ -180,7 +237,6 @@ All configuration is via environment variables. The Home Assistant app offers th
 - **Buttons.** Each button press fires a device trigger: in an automation, choose the remote as the device, then the button. Arcus only reports presses, so holds and double presses can't be told apart from single presses.
 - **Key fob presence.** A fob shows as away once the hub hasn't heard from it for a while (10 minutes for Iris fobs), and home again as soon as it's heard.
 - **Emergency heat.** Thermostats whose Arcus driver supports emergency heat get an **Emergency heat** switch. On, the thermostat runs only its backup heat, as a heat pump needs when it's too cold outside for the compressor; off, it goes back to its previous mode. The switch appears whether or not the thermostat controls a heat pump, so disable it in Home Assistant if you don't need it.
-- **Buzz in.** Locks that support it get a **Buzz in** button: it unlocks a locked door, and the lock locks itself again shortly after (45 seconds on Schlage deadbolts). It does nothing if the door is already unlocked. HomeKit asks you to unlock your iPhone before it unlocks a lock, but HomeKit Bridge turns buttons into switches, which have no such check, so leave this button out of HomeKit Bridge unless you want that.
 - **HomeKit.** HomeKit Bridge sets up an accessory's controls when it creates it. After updating this server, reload HomeKit Bridge (**Settings → Devices & Services → HomeKit Bridge → ⋮ → Reload**) so changes such as new fan modes reach HomeKit. If an accessory still misbehaves, use the `homekit.reset_accessory` action on it.
 - **Removed devices.** Devices, scenes and entities removed in Arcus are removed from Home Assistant on the next sync. This only works for devices the server has seen since it last started: anything removed while it was down stays in Home Assistant as unavailable, and must be deleted there by hand.
 
@@ -207,14 +263,15 @@ src/
 │   ├── state.ts          # State publishing
 │   ├── command.ts        # Command handling (HA → Arcus)
 │   ├── alarm.ts          # Alarm control panel
-│   └── scenes.ts         # Scene discovery & control
+│   ├── scenes.ts         # Scene discovery & control
+│   └── lock-access.ts    # Per-person PIN switches on locks (lock_access)
 └── mappers/
     ├── index.ts          # Mapper interface & registry
     ├── switch.ts         # swit → switch
     ├── light.ts          # dim/color/colortemp → light
     ├── climate.ts        # therm → climate, emergency heat switch
     ├── binary-sensor.ts  # cont/mot/leakh2o/smoke/co/glass/tilt/pres → binary_sensor
-    ├── lock.ts           # doorlock → lock, buzz-in button
+    ├── lock.ts           # doorlock → lock; buzz in, PIN access state and commands
     ├── cover.ts          # motdoor → cover (garage)
     ├── sensor.ts         # temp/humid/battery/pow → sensor
     ├── device-trigger.ts # but, one per button → device_automation

@@ -2,7 +2,8 @@ import { describe, it, before, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { startSync } from '../src/sync.js';
 import type { ArcusClient } from '../src/arcus/client.js';
-import type { ArcusDevice, ArcusAttributes, ArcusMethodCall, AlarmState, SceneInfo } from '../src/arcus/types.js';
+import type { ArcusDevice, ArcusAttributes, ArcusMethodCall, AlarmState, PersonInfo, SceneInfo } from '../src/arcus/types.js';
+import type { Config } from '../src/config.js';
 import { FakeMqtt, makeDevice, testConfig, until, quietConsole } from './helpers.js';
 
 /** A scriptable ArcusClient: tests change what it returns and fire its events */
@@ -10,6 +11,7 @@ class FakeClient implements ArcusClient {
   devices: ArcusDevice[] = [];
   hub: ArcusDevice | null = null;
   scenes: SceneInfo[] = [];
+  people: PersonInfo[] = [];
   alarm: AlarmState = { securityMode: 'DISARMED', alarmMode: 'ON', bypassedDevices: [] };
   listDevicesCalls = 0;
   listDevicesDelayMs = 0;
@@ -57,6 +59,9 @@ class FakeClient implements ArcusClient {
   async listScenes(): Promise<SceneInfo[]> {
     return this.scenes;
   }
+  async listPersons(): Promise<PersonInfo[]> {
+    return this.people;
+  }
   onSceneEvent(): void {}
   async fireScene(): Promise<void> {}
 
@@ -83,12 +88,12 @@ describe('sync', () => {
   before(quietConsole);
   afterEach(() => stop?.());
 
-  async function start(setup: (client: FakeClient) => void = () => {}) {
+  async function start(setup: (client: FakeClient) => void = () => {}, overrides: Partial<Config> = {}) {
     const broker = new FakeMqtt();
     const client = new FakeClient();
     client.devices = [contact(), lock()];
     setup(client);
-    const sync = await startSync(broker, testConfig(), client);
+    const sync = await startSync(broker, testConfig(overrides), client);
     stop = sync.stop;
     return { broker, client };
   }
@@ -208,6 +213,24 @@ describe('sync', () => {
       { address: 'DRIV:dev:timer-1', call: { method: 'irrcont:WaterNowV2', args: { zone: 'z1', duration: 5 } } },
     ]);
     assert.deepEqual(client.commands, []);
+  });
+
+  it('adds and removes lock PINs through access switches, with the lock_access feature', async () => {
+    const { broker, client } = await start(
+      c => { c.people = [{ id: '0000000a-0000-4000-8000-000000000001', name: 'Pat Example', hasPin: true }]; },
+      { features: new Set(['lock_access']) },
+    );
+    assert.ok(broker.retained.get('homeassistant/switch/arcus/lock-1_access_0000000a-0000-4000-8000-000000000001/config'));
+    assert.deepEqual(broker.json('arcus/lock-1/state').access, []);
+
+    broker.deliver('arcus/lock-1/access_0000000a-0000-4000-8000-000000000001/set', 'ON');
+    assert.deepEqual(client.methodCalls, [
+      { address: 'DRIV:dev:lock-1', call: { method: 'doorlock:AuthorizePerson', args: { personId: '0000000a-0000-4000-8000-000000000001' } } },
+    ]);
+
+    // The driver records the slot, which turns the switch on
+    client.emitDevice('DRIV:dev:lock-1', { 'doorlock:slots': { '1': '0000000a-0000-4000-8000-000000000001' } });
+    assert.deepEqual(broker.json('arcus/lock-1/state').access, ['0000000a-0000-4000-8000-000000000001']);
   });
 
   it('republishes discovery after reconnecting to the broker', async () => {

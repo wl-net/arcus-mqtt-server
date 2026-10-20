@@ -1,9 +1,9 @@
 import type { Config } from '../config.js';
 import type { ArcusClient } from './client.js';
-import type { ArcusDevice, ArcusAttributes, ArcusMethodCall, AlarmState, SceneInfo } from './types.js';
+import type { ArcusDevice, ArcusAttributes, ArcusMethodCall, AlarmState, PersonInfo, SceneInfo } from './types.js';
 import { isAttributeValue } from './types.js';
 import { BridgeClient, throwIfErrorResponse } from './bridge-client.js';
-import { SecuritySubsystem } from './capabilities.js';
+import { Base, Person, Place, SecuritySubsystem } from './capabilities.js';
 
 /** base:instances, e.g. { button1: ['but'] }, keeping only well-formed entries */
 function readInstances(value: unknown): Record<string, string[]> {
@@ -251,6 +251,27 @@ export class PlatformArcusClient implements ArcusClient {
 
   onAlarmEvent(handler: (state: AlarmState) => void): void {
     this.alarmHandlers.push(handler);
+  }
+
+  async listPersons(): Promise<PersonInfo[]> {
+    const resp = await this.bridge.sendRequest(this.bridge.placeDestination, Place.CMD_LISTPERSONS, {});
+    const raw = resp.payload.attributes.persons as Record<string, unknown>[] | undefined;
+    // Throw rather than return []: an empty list would remove every access switch from HA
+    if (!raw || !Array.isArray(raw)) {
+      throw new Error(`place:ListPersons returned no person list (${resp.payload.messageType})`);
+    }
+    return raw.map(p => {
+      const id = String(p[Base.ATTR_ID]);
+      const name = [p[Person.ATTR_FIRSTNAME], p[Person.ATTR_LASTNAME]]
+        .filter((part): part is string => typeof part === 'string' && part.trim() !== '')
+        .map(part => part.trim())
+        .join(' ');
+      const placesWithPin = p[Person.ATTR_PLACESWITHPIN];
+      const hasPin = Array.isArray(placesWithPin)
+        ? placesWithPin.includes(this.placeId)
+        : p[Person.ATTR_HASPIN] === true;
+      return { id, name: name || id, hasPin };
+    });
   }
 
   async listScenes(): Promise<SceneInfo[]> {

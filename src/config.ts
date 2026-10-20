@@ -18,6 +18,32 @@ export function loadAppOptions(path = APP_OPTIONS_PATH, env: NodeJS.ProcessEnv =
   return true;
 }
 
+/** Optional features, off unless named in FEATURES (comma-separated, e.g. FEATURES=buzz_in,lock_access) */
+export const Features = {
+  /** A Buzz in button on locks that support it */
+  BUZZ_IN: 'buzz_in',
+  /** A switch per person on each lock that adds or removes their Arcus PIN */
+  LOCK_ACCESS: 'lock_access',
+} as const;
+
+export type Feature = (typeof Features)[keyof typeof Features];
+
+const KNOWN_FEATURES = new Set<string>(Object.values(Features));
+
+/** Parse FEATURES, warning about names it doesn't know */
+export function parseFeatures(value: string | undefined): Set<Feature> {
+  const features = new Set<Feature>();
+  for (const name of (value ?? '').toLowerCase().split(/[\s,]+/).filter(Boolean)) {
+    if (KNOWN_FEATURES.has(name)) features.add(name as Feature);
+    else console.warn(`[Config] Unknown feature in FEATURES: ${name}`);
+  }
+  return features;
+}
+
+export function hasFeature(config: Config, feature: Feature): boolean {
+  return config.features.has(feature);
+}
+
 export interface Config {
   /** Broker to connect to, e.g. mqtt://localhost:1883; unset in the app, where the Supervisor provides it */
   mqttUrl: string | undefined;
@@ -26,6 +52,8 @@ export interface Config {
   /** Set by the Supervisor when running as a Home Assistant app */
   supervisorToken: string | undefined;
   arcusMock: boolean;
+  /** Optional features that are turned on (see Features) */
+  features: Set<Feature>;
   pollIntervalMs: number;
   haDiscoveryPrefix: string;
   deviceIdPrefix: string;
@@ -44,6 +72,7 @@ export function loadConfig(): Config {
     mqttPassword: process.env.MQTT_PASSWORD || undefined,
     supervisorToken: process.env.SUPERVISOR_TOKEN || undefined,
     arcusMock: process.env.ARCUS_MOCK === '1',
+    features: parseFeatures(process.env.FEATURES),
     pollIntervalMs: parseInt(process.env.POLL_INTERVAL_MS ?? '300000', 10),
     haDiscoveryPrefix: process.env.HA_DISCOVERY_PREFIX ?? 'homeassistant',
     deviceIdPrefix: process.env.DEVICE_ID_PREFIX ?? 'arcus',

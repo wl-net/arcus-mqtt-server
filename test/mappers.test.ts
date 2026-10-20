@@ -11,6 +11,8 @@ import { lightMapper } from '../src/mappers/light.js';
 import { ventMapper } from '../src/mappers/vent.js';
 import { irrigationMapper } from '../src/mappers/irrigation.js';
 import { deviceTriggerMapper } from '../src/mappers/device-trigger.js';
+import { publishLockAccessDiscovery } from '../src/ha/lock-access.js';
+import { Features } from '../src/config.js';
 import { matchingMappers } from '../src/mappers/index.js';
 import type { Mapper } from '../src/mappers/index.js';
 import type { ArcusAttributes } from '../src/arcus/types.js';
@@ -106,15 +108,54 @@ describe('lock mapper', () => {
     assert.deepEqual(lockMapper.buildState(config, device), { lock: 'LOCKED' });
   });
 
-  it('adds a buzz-in button only for locks that support it', () => {
-    const plain = makeDevice('DRIV:dev:l1', ['doorlock'], { 'doorlock:lockstate': 'LOCKED' });
-    assert.equal(discoveryById(lockMapper, plain).has('l1_buzz_in'), false);
-    assert.equal(lockMapper.handleMethodCommand?.(config, plain, 'buzz_in', 'PRESS'), null);
+  describe('buzz in (buzz_in feature)', () => {
+    const buzzIn = testConfig({ features: new Set([Features.BUZZ_IN]) });
+    const buzzable = () =>
+      makeDevice('DRIV:dev:l1', ['doorlock'], { 'doorlock:lockstate': 'LOCKED', 'doorlock:supportsBuzzIn': true });
 
-    const buzzable = makeDevice('DRIV:dev:l1', ['doorlock'], { 'doorlock:lockstate': 'LOCKED', 'doorlock:supportsBuzzIn': true });
-    assert.equal(discoveryById(lockMapper, buzzable).get('l1_buzz_in')?.command_topic, 'arcus/l1/buzz_in/set');
-    assert.deepEqual(lockMapper.handleMethodCommand?.(config, buzzable, 'buzz_in', 'PRESS'), { method: 'doorlock:BuzzIn', args: {} });
-    assert.equal(lockMapper.handleMethodCommand?.(config, buzzable, 'lock', 'UNLOCK'), null);
+    it('adds a buzz-in button only for locks that support it', () => {
+      const plain = makeDevice('DRIV:dev:l1', ['doorlock'], { 'doorlock:lockstate': 'LOCKED' });
+      assert.equal(new Map(lockMapper.buildDiscovery(buzzIn, plain).map(d => [d.payload.object_id, d])).has('l1_buzz_in'), false);
+      assert.equal(lockMapper.handleMethodCommand?.(buzzIn, plain, 'buzz_in', 'PRESS'), null);
+
+      const disc = lockMapper.buildDiscovery(buzzIn, buzzable()).find(d => d.payload.object_id === 'l1_buzz_in');
+      assert.equal(disc?.payload.command_topic, 'arcus/l1/buzz_in/set');
+      assert.deepEqual(lockMapper.handleMethodCommand?.(buzzIn, buzzable(), 'buzz_in', 'PRESS'), { method: 'doorlock:BuzzIn', args: {} });
+      assert.equal(lockMapper.handleMethodCommand?.(buzzIn, buzzable(), 'lock', 'UNLOCK'), null);
+    });
+
+    it('offers nothing with the feature off', () => {
+      assert.equal(discoveryById(lockMapper, buzzable()).has('l1_buzz_in'), false);
+      assert.equal(lockMapper.handleMethodCommand?.(config, buzzable(), 'buzz_in', 'PRESS'), null);
+    });
+  });
+
+  describe('access (lock_access feature)', () => {
+    const access = testConfig({ features: new Set([Features.LOCK_ACCESS]) });
+    const withSlots = (slots: Record<string, string>) =>
+      makeDevice('DRIV:dev:l1', ['doorlock'], { 'doorlock:lockstate': 'LOCKED', 'doorlock:slots': slots });
+    const cmd = (cfg: typeof config, slots: Record<string, string>, entity: string, payload: string) =>
+      lockMapper.handleMethodCommand?.(cfg, withSlots(slots), entity, payload);
+
+    it('reports who has a PIN on the lock', () => {
+      assert.deepEqual(lockMapper.buildState(access, withSlots({ '2': '0000000a-0000-4000-8000-000000000002', '1': '0000000a-0000-4000-8000-000000000001' })).access, ['0000000a-0000-4000-8000-000000000001', '0000000a-0000-4000-8000-000000000002']);
+      assert.deepEqual(lockMapper.buildState(access, withSlots({})).access, []);
+      assert.equal('access' in lockMapper.buildState(config, withSlots({ '1': '0000000a-0000-4000-8000-000000000001' })), false);
+    });
+
+    it('adds and removes a PIN', () => {
+      assert.deepEqual(cmd(access, {}, 'access_0000000a-0000-4000-8000-000000000001', 'ON'),
+        { method: 'doorlock:AuthorizePerson', args: { personId: '0000000a-0000-4000-8000-000000000001' } });
+      assert.deepEqual(cmd(access, { '1': '0000000a-0000-4000-8000-000000000001' }, 'access_0000000a-0000-4000-8000-000000000001', 'OFF'),
+        { method: 'doorlock:DeauthorizePerson', args: { personId: '0000000a-0000-4000-8000-000000000001' } });
+    });
+
+    it("ignores removing someone who isn't on the lock, bad payloads, and everything with the feature off", () => {
+      assert.equal(cmd(access, {}, 'access_0000000a-0000-4000-8000-000000000001', 'OFF'), null);
+      assert.equal(cmd(access, {}, 'access_0000000a-0000-4000-8000-000000000001', 'TOGGLE'), null);
+      assert.equal(cmd(access, {}, 'access_not/an/id', 'ON'), null);
+      assert.equal(cmd(config, {}, 'access_0000000a-0000-4000-8000-000000000001', 'ON'), null);
+    });
   });
 
   it('translates lock commands', () => {
@@ -495,5 +536,45 @@ describe('irrigation mapper', () => {
 describe('mapper registry', () => {
   it('has no camera mapper', () => {
     assert.equal(matchingMappers(makeDevice('DRIV:dev:cam', ['camera'])).length, 0);
+  });
+});
+
+describe('lock access switches', () => {
+  const access = testConfig({ features: new Set([Features.LOCK_ACCESS]) });
+  const people = [
+    { id: '0000000a-0000-4000-8000-000000000001', name: 'Pat Example', hasPin: true },
+    { id: '0000000a-0000-4000-8000-000000000002', name: 'Robin Guest', hasPin: false },
+  ];
+  const lockWith = (slots: Record<string, string>) =>
+    makeDevice('DRIV:dev:l1', ['doorlock'], { 'doorlock:slots': slots }, 'Back Door');
+  const switches = (mqtt: FakeMqtt) =>
+    [...mqtt.retained.keys()].filter(t => t.startsWith('homeassistant/switch/') && mqtt.retained.get(t));
+
+  it('adds a config switch per person with a PIN, on each lock', () => {
+    const mqtt = new FakeMqtt();
+    const contact = makeDevice('DRIV:dev:c1', ['cont']);
+    publishLockAccessDiscovery(mqtt, access, [lockWith({}), contact], people);
+
+    const topic = `homeassistant/switch/arcus/l1_access_0000000a-0000-4000-8000-000000000001/config`;
+    assert.deepEqual(switches(mqtt), [topic]);
+    const disc = mqtt.json(topic);
+    assert.equal(disc.name, 'Pat Example access');
+    assert.equal(disc.entity_category, 'config');
+    assert.equal(disc.command_topic, 'arcus/l1/access_0000000a-0000-4000-8000-000000000001/set');
+    assert.equal(disc.state_topic, 'arcus/l1/state');
+    assert.match(String(disc.value_template), /'0000000a-0000-4000-8000-000000000001' in \(value_json.access/);
+  });
+
+  it("keeps a switch for someone without a PIN while they're still on the lock", () => {
+    const mqtt = new FakeMqtt();
+    publishLockAccessDiscovery(mqtt, access, [lockWith({ '3': '0000000a-0000-4000-8000-000000000002' })], people);
+    assert.equal(switches(mqtt).length, 2);
+  });
+
+  it('removes the switches when the feature is turned off', () => {
+    const mqtt = new FakeMqtt();
+    publishLockAccessDiscovery(mqtt, access, [lockWith({})], people);
+    publishLockAccessDiscovery(mqtt, config, [lockWith({})], people);
+    assert.deepEqual(switches(mqtt), []);
   });
 });

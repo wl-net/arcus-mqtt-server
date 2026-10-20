@@ -1,4 +1,4 @@
-import type { ArcusDevice } from './types.js';
+import type { ArcusDevice, PersonInfo } from './types.js';
 import {
   Base, Device, DevicePower, Switch, Dimmer, Thermostat, Temperature,
   RelativeHumidity, Contact, Motion, DoorLock, LeakH2O, Button,
@@ -7,6 +7,20 @@ import {
   Color, ColorTemperature, Light, Valve, Shade, Vent,
   IrrigationController, IrrigationZone, Presence,
 } from './capabilities.js';
+
+const MOCK_PERSON_IDS = {
+  owner: '00000000-0000-4000-8000-000000000001',
+  walker: '00000000-0000-4000-8000-000000000002',
+  noPin: '00000000-0000-4000-8000-000000000003',
+};
+
+export function createMockPeople(): PersonInfo[] {
+  return [
+    { id: MOCK_PERSON_IDS.owner, name: 'Alex Example', hasPin: true },
+    { id: MOCK_PERSON_IDS.walker, name: 'Dog Walker', hasPin: true },
+    { id: MOCK_PERSON_IDS.noPin, name: 'Sam Nopin', hasPin: false },
+  ];
+}
 
 export function createMockDevices(): ArcusDevice[] {
   return [
@@ -177,7 +191,7 @@ export function createMockDevices(): ArcusDevice[] {
       attributes: {
         [DoorLock.ATTR_LOCKSTATE]: DoorLock.LOCKSTATE_LOCKED,
         [DoorLock.ATTR_SUPPORTSBUZZIN]: true,
-        [DoorLock.ATTR_SLOTS]: '{}',
+        [DoorLock.ATTR_SLOTS]: { '1': MOCK_PERSON_IDS.owner },
         [DevicePower.ATTR_SOURCE]: DevicePower.SOURCE_BATTERY,
         [DevicePower.ATTR_BATTERY]: 78,
         [Device.ATTR_DEVTYPEHINT]: 'Lock',

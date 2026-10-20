@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadAppOptions } from '../src/config.js';
+import { loadAppOptions, parseFeatures } from '../src/config.js';
+import { quietConsole } from './helpers.js';
 
 describe('loadAppOptions', () => {
   let dir: string;
@@ -41,5 +42,20 @@ describe('loadAppOptions', () => {
     const env: NodeJS.ProcessEnv = {};
     assert.equal(loadAppOptions(join(dir, 'missing.json'), env), false);
     assert.deepEqual(env, {});
+  });
+});
+
+describe('parseFeatures', () => {
+  before(quietConsole);
+
+  it('turns on the features it names, separated by commas or spaces', () => {
+    assert.deepEqual([...parseFeatures('buzz_in, LOCK_ACCESS')].sort(), ['buzz_in', 'lock_access']);
+    assert.deepEqual([...parseFeatures('lock_access buzz_in')].sort(), ['buzz_in', 'lock_access']);
+  });
+
+  it('turns nothing on when unset or empty, and skips unknown names', () => {
+    assert.equal(parseFeatures(undefined).size, 0);
+    assert.equal(parseFeatures('').size, 0);
+    assert.deepEqual([...parseFeatures('teleport,buzz_in')], ['buzz_in']);
   });
 });

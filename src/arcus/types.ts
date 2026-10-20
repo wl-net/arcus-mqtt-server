@@ -55,6 +55,15 @@ export interface AlarmState {
   bypassedDevices: string[]; // addresses of sensors excluded from the current arming
 }
 
+/** A person at the place, for adding their PIN to locks */
+export interface PersonInfo {
+  /** Person ID, as doorlock:slots and doorlock:AuthorizePerson use it */
+  id: string;
+  name: string;
+  /** Has a PIN at this place; only then can it be added to a lock */
+  hasPin: boolean;
+}
+
 export interface SceneInfo {
   address: string;    // e.g. "SERV:scene:{placeId}.1"
   id: string;         // e.g. "{placeId}.1"

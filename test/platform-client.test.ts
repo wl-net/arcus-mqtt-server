@@ -143,6 +143,30 @@ describe('PlatformArcusClient', () => {
     });
   });
 
+  describe('people', () => {
+    it('lists people, with a PIN only for the ones that have one at this place', async () => {
+      const { client } = await connect((req) => req.messageType === 'place:ListPersons'
+        ? { messageType: 'place:ListPersonsResponse', attributes: { persons: [
+            { 'base:id': '0000000a-0000-4000-8000-000000000001', 'person:firstName': 'Pat', 'person:lastName': 'Example', 'person:placesWithPin': ['place-1'] },
+            { 'base:id': '0000000a-0000-4000-8000-000000000002', 'person:firstName': 'Robin', 'person:lastName': '', 'person:placesWithPin': ['place-2'] },
+          ] } }
+        : undefined);
+      await client.connect();
+      assert.deepEqual(await client.listPersons(), [
+        { id: '0000000a-0000-4000-8000-000000000001', name: 'Pat Example', hasPin: true },
+        { id: '0000000a-0000-4000-8000-000000000002', name: 'Robin', hasPin: false },
+      ]);
+    });
+
+    it('throws on a malformed person list', async () => {
+      const { client } = await connect((req) => req.messageType === 'place:ListPersons'
+        ? { messageType: 'Error', attributes: { code: 'boom' } }
+        : undefined);
+      await client.connect();
+      await assert.rejects(client.listPersons(), /no person list/);
+    });
+  });
+
   describe('commands and scenes', () => {
     const refused = { messageType: 'Error', attributes: { code: 'request.refused' } };
 

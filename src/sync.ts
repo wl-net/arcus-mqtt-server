@@ -1,7 +1,8 @@
 import type { Mqtt } from './mqtt.js';
 import type { ArcusClient } from './arcus/client.js';
-import type { ArcusDevice, SceneInfo } from './arcus/types.js';
+import type { ArcusDevice, PersonInfo, SceneInfo } from './arcus/types.js';
 import type { Config } from './config.js';
+import { Features, hasFeature } from './config.js';
 import { matchingMappers } from './mappers/index.js';
 import { DeviceConnection, DeviceAdvanced, Hub, HubConnection } from './arcus/capabilities.js';
 import { publishState, publishAvailability, publishBridgeAvailability, publishHubConnection, isDeviceOnline, clearDeviceTopics } from './ha/state.js';
@@ -10,6 +11,7 @@ import { syncOwnedDiscovery, removeOwnedDiscovery, resetPublishedDiscovery } fro
 import { setupCommandHandler } from './ha/command.js';
 import { publishAlarmDiscovery, publishAlarmState, publishAlarmAvailability, setupAlarmCommandHandler } from './ha/alarm.js';
 import { publishSceneDiscovery, publishSceneFired, setupSceneCommandHandler } from './ha/scenes.js';
+import { publishLockAccessDiscovery } from './ha/lock-access.js';
 
 /** Protocols whose devices pair through the hub (others, e.g. IPCD Wi-Fi devices, talk to the platform directly) */
 const HUB_PROTOCOLS = new Set(['ZIGB', 'ZWAV']);
@@ -30,6 +32,7 @@ async function fullSync(
   client: ArcusClient,
   devices: Map<string, ArcusDevice>,
   scenes: SceneInfo[],
+  people: PersonInfo[],
 ): Promise<void> {
   const deviceList = await client.listDevices();
   console.log(`[Sync] Fetched ${deviceList.length} devices`);
@@ -77,6 +80,19 @@ async function fullSync(
     publishAvailability(mqtt, config, device);
   }
 
+  // Lock access switches: refresh the person list (keeping the last one on error), then publish,
+  // or remove them all when the lock_access feature is off
+  if (hasFeature(config, Features.LOCK_ACCESS)) {
+    try {
+      const freshPeople = await client.listPersons();
+      people.length = 0;
+      people.push(...freshPeople);
+    } catch (err) {
+      console.error('[Sync] Person list error:', err);
+    }
+  }
+  publishLockAccessDiscovery(mqtt, config, devices.values(), people);
+
   // Sync alarm: discovery + state + availability
   publishAlarmDiscovery(mqtt, config);
   try {
@@ -107,6 +123,7 @@ export async function startSync(
 ): Promise<{ stop(): void }> {
   const devices = new Map<string, ArcusDevice>();
   const scenes: SceneInfo[] = [];
+  const people: PersonInfo[] = [];
   let connected = false;
 
   // Entities stay unavailable until the first sync succeeds
@@ -128,7 +145,7 @@ export async function startSync(
         do {
           rerun = false;
           try {
-            await fullSync(mqtt, config, client, devices, scenes);
+            await fullSync(mqtt, config, client, devices, scenes, people);
             if (connected) publishBridgeAvailability(mqtt, config, true);
           } catch (err) {
             // A sync requested meanwhile (typically a reconnect) supersedes this failure

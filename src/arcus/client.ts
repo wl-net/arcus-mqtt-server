@@ -1,6 +1,6 @@
-import type { ArcusDevice, ArcusAttributes, ArcusMethodCall, AlarmState, SceneInfo } from './types.js';
+import type { ArcusDevice, ArcusAttributes, ArcusMethodCall, AlarmState, PersonInfo, SceneInfo } from './types.js';
 import { DoorLock, IrrigationController, IrrigationZone } from './capabilities.js';
-import { createMockDevices, createMockHub } from './mock-data.js';
+import { createMockDevices, createMockHub, createMockPeople } from './mock-data.js';
 
 export interface ArcusClient {
   /** Fetch all devices and their current state */
@@ -35,6 +35,9 @@ export interface ArcusClient {
 
   /** Register a callback for alarm state changes */
   onAlarmEvent(handler: (state: AlarmState) => void): void;
+
+  /** List the people at the place */
+  listPersons(): Promise<PersonInfo[]>;
 
   /** List all scenes */
   listScenes(): Promise<SceneInfo[]>;
@@ -113,6 +116,22 @@ export class MockArcusClient implements ArcusClient {
       setTimeout(() => {
         void this.sendCommand(address, { [DoorLock.ATTR_LOCKSTATE]: DoorLock.LOCKSTATE_LOCKED });
       }, 30_000).unref();
+    } else if (call.method === DoorLock.CMD_AUTHORIZEPERSON || call.method === DoorLock.CMD_DEAUTHORIZEPERSON) {
+      // Like the lock drivers: doorlock:slots maps slot number → person ID
+      const device = this.devices.find(d => d.address === address);
+      const current = device?.attributes[DoorLock.ATTR_SLOTS];
+      const slots: Record<string, string> =
+        typeof current === 'object' && !Array.isArray(current) ? { ...current } : {};
+      const personId = String(call.args.personId);
+      for (const [slot, id] of Object.entries(slots)) {
+        if (id === personId) delete slots[slot];
+      }
+      if (call.method === DoorLock.CMD_AUTHORIZEPERSON) {
+        let slot = 1;
+        while (slots[String(slot)]) slot++;
+        slots[String(slot)] = personId;
+      }
+      await this.sendCommand(address, { [DoorLock.ATTR_SLOTS]: slots });
     }
   }
 
@@ -152,6 +171,10 @@ export class MockArcusClient implements ArcusClient {
 
   onAlarmEvent(handler: (state: AlarmState) => void): void {
     this.alarmHandlers.push(handler);
+  }
+
+  async listPersons(): Promise<PersonInfo[]> {
+    return createMockPeople();
   }
 
   async listScenes(): Promise<SceneInfo[]> {
