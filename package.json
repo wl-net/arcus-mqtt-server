@@ -1,6 +1,6 @@
 {
   "name": "arcus-mqtt-server",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Arcus-to-Home Assistant MQTT bridge",
   "type": "module",
   "main": "dist/index.js",

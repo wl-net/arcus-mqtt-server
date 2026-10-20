@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.3
+
+- Multi-button remotes and scene controllers, such as the Zooz ZEN32, ZEN34 and ZEN37, and Iris key fobs: a trigger for each button. Before, only single-button devices sent presses.
+- Key fobs: a presence sensor, home or away.
+- Thermostats that support emergency heat: an **Emergency heat** switch, for heat pumps.
+- Optional features, off unless listed in the new `FEATURES` option (comma-separated):
+  - `buzz_in`: a **Buzz in** button on locks that support it.
+  - `lock_access`: a switch per person on each lock that adds or removes their Arcus PIN, for timed access with a Home Assistant schedule. Read the README's Optional features section before turning it on.
+- Runs on Node.js 24.
+
+After updating, reload HomeKit Bridge so HomeKit picks up the new entities.
+
 ## 0.2.2
 
 - Jammed locks now show as jammed in Home Assistant and HomeKit, instead of locking.
