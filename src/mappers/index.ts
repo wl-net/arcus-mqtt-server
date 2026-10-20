@@ -54,6 +54,7 @@ import { valveMapper } from './valve.js';
 import { shadeMapper } from './shade.js';
 import { ventMapper } from './vent.js';
 import { irrigationMapper } from './irrigation.js';
+import { sirenMapper } from './siren.js';
 
 /** All registered mappers, in priority order */
 export const mappers: Mapper[] = [
@@ -70,6 +71,7 @@ export const mappers: Mapper[] = [
   shadeMapper,
   ventMapper,
   irrigationMapper,
+  sirenMapper,
 ];
 
 /** Get all mappers that match a device */

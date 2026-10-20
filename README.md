@@ -23,7 +23,7 @@ Arcus Platform ──► Arcus MQTT Server ──► MQTT broker ◄── Home 
 |--------|-------------|--------------|
 | Switch | `switch` | On/off control |
 | Dimmer / bulb | `light` | On/off, brightness; color (hue/saturation) and color temperature for bulbs that support them |
-| Thermostat | `climate`, `switch` | Mode, setpoints, current temp, heating/cooling/idle, fan (off/on or speeds), ECO preset; emergency heat switch where the driver supports it |
+| Thermostat | `climate`, `switch` | Mode, setpoints, current temperature and humidity, heating/cooling/idle, fan (off/on or speeds), ECO preset; emergency heat switch where the driver supports it |
 | Contact sensor | `binary_sensor` | Door/window open/closed |
 | Motion sensor | `binary_sensor` | Motion detected/clear |
 | Leak sensor | `binary_sensor` | Water leak detected/safe |
@@ -39,6 +39,7 @@ Arcus Platform ──► Arcus MQTT Server ──► MQTT broker ◄── Home 
 | Irrigation controller | `valve` (water) + `number` per zone | Water or stop each zone; watering time per zone, used when a zone is opened |
 | Shade | `cover` (shade) | Open/close and set position |
 | Vent | `cover` (damper), `binary_sensor`, `sensor` | Open/close and set position; obstruction; duct air pressure |
+| Siren | `siren` with the `sirens` [optional feature](#optional-features) | Sound and silence |
 | Temperature | `sensor` | Temperature reading |
 | Humidity | `sensor` | Humidity reading |
 | Battery | `sensor` | Battery percentage |
@@ -172,11 +173,11 @@ All configuration is via environment variables. The Home Assistant app offers th
 | `ARCUS_PASSWORD` | — | Platform password (client-bridge mode) |
 | `ARCUS_AUTH_TOKEN` | — | Auth token, alternative to username/password |
 | `ARCUS_PLACE_ID` | — | Place ID (required for client-bridge, optional for api-server) |
-| `FEATURES` | — | [Optional features](#optional-features) to turn on, comma-separated, e.g. `buzz_in,lock_access` |
+| `FEATURES` | — | [Optional features](#optional-features) to turn on, comma-separated, e.g. `buzz_in,lock_access,sirens` |
 
 ## Optional features
 
-Some features are off unless you list them in `FEATURES`, comma-separated, such as `FEATURES=buzz_in,lock_access`. In the app, enter the same list in the **FEATURES** option and restart the app.
+Some features are off unless you list them in `FEATURES`, comma-separated, such as `FEATURES=buzz_in,sirens`. In the app, enter the same list in the **FEATURES** option and restart the app.
 
 Turning a feature off stops its commands, but its entities stay in Home Assistant, doing nothing, until you delete them there (see **Removed devices** under [Notes](#notes)).
 
@@ -230,6 +231,25 @@ automation:
           message: The dog walker's PIN is still on the front door
 ```
 
+### `sirens`: Sirens
+
+Each siren gets a siren entity, to sound or silence it from Home Assistant. Any MQTT login can sound it.
+
+A siren you turn on stays on until something turns it off: Arcus doesn't turn sirens off by themselves. Have the automation that sounds one turn it off too:
+
+```yaml
+actions:
+  - action: siren.turn_on
+    target:
+      entity_id: siren.hallway_siren
+  - delay: "00:02:00"
+  - action: siren.turn_off
+    target:
+      entity_id: siren.hallway_siren
+```
+
+Turning a siren off from Home Assistant silences it, even while the Arcus alarm is going off.
+
 ## Notes
 
 - **Alarm bypass notifications.** Arming with a door or window open arms around it (Arcus "arm bypassed"). The **Bypassed sensors** binary sensor on the *Arcus Security* device turns on when that happens, and its `bypassed_sensors` attribute lists the sensors. Trigger a notification automation on it turning on.
@@ -279,6 +299,7 @@ src/
     ├── valve.ts          # valv → valve
     ├── shade.ts          # shade → cover
     ├── vent.ts           # vent → cover (damper), obstruction, pressure
+    ├── siren.ts          # alert on sirens → siren (sirens)
     └── irrigation.ts     # irrcont/irr → valve + watering time per zone
 ```
 

@@ -1,5 +1,5 @@
 import type { ArcusDevice, ArcusAttributes } from '../arcus/types.js';
-import { Thermostat, Temperature } from '../arcus/capabilities.js';
+import { Thermostat, Temperature, RelativeHumidity } from '../arcus/capabilities.js';
 import type { Config } from '../config.js';
 import type { HADiscoveryConfig } from '../ha/discovery.js';
 import { buildDeviceInfo, buildAvailability } from '../ha/discovery.js';
@@ -145,6 +145,12 @@ export const climateMapper: Mapper = {
       ...buildAvailability(config, device),
     };
 
+    // Thermostats with a humidity sensor show it on the climate entity too (and in HomeKit)
+    if (device.caps.has(RelativeHumidity.NAMESPACE)) {
+      payload.current_humidity_topic = state;
+      payload.current_humidity_template = '{{ value_json.climate_current_humidity }}';
+    }
+
     if (supportsEco(device)) {
       payload.preset_modes = [ECO_PRESET];
       payload.preset_mode_state_topic = state;
@@ -194,6 +200,10 @@ export const climateMapper: Mapper = {
       climate_action: hvacAction(device),
     };
     if (supportsEco(device)) state.climate_preset = eco ? ECO_PRESET : 'none';
+    const humidity = device.attributes[RelativeHumidity.ATTR_HUMIDITY];
+    if (device.caps.has(RelativeHumidity.NAMESPACE) && typeof humidity === 'number') {
+      state.climate_current_humidity = humidity;
+    }
     if (supportsEmergencyHeat(device)) {
       state.emergency_heat = device.attributes[Thermostat.ATTR_EMERGENCYHEAT] === Thermostat.EMERGENCYHEAT_ON ? 'ON' : 'OFF';
     }

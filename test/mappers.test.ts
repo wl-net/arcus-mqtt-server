@@ -11,6 +11,7 @@ import { lightMapper } from '../src/mappers/light.js';
 import { ventMapper } from '../src/mappers/vent.js';
 import { irrigationMapper } from '../src/mappers/irrigation.js';
 import { deviceTriggerMapper } from '../src/mappers/device-trigger.js';
+import { sirenMapper } from '../src/mappers/siren.js';
 import { publishLockAccessDiscovery } from '../src/ha/lock-access.js';
 import { Features } from '../src/config.js';
 import { matchingMappers } from '../src/mappers/index.js';
@@ -266,6 +267,18 @@ describe('climate mapper', () => {
       assert.deepEqual(cmd('auto'), { 'therm:fanmode': 0 });
       assert.equal(cmd('turbo'), null);
     });
+  });
+
+  it('shows the thermostat humidity on the climate entity, when it has a humidity sensor', () => {
+    const [plain] = climateMapper.buildDiscovery(config, thermostat({}));
+    assert.equal('current_humidity_topic' in plain.payload, false);
+    assert.equal('climate_current_humidity' in state({}), false);
+
+    const humid = makeDevice('DRIV:dev:t1', ['therm', 'temp', 'humid'], { 'therm:hvacmode': 'HEAT', 'humid:humidity': 46 });
+    const [disc] = climateMapper.buildDiscovery(config, humid);
+    assert.equal(disc.payload.current_humidity_topic, 'arcus/t1/state');
+    assert.equal(disc.payload.current_humidity_template, '{{ value_json.climate_current_humidity }}');
+    assert.equal(climateMapper.buildState(config, humid).climate_current_humidity, 46);
   });
 
   describe('emergency heat', () => {
@@ -576,5 +589,32 @@ describe('lock access switches', () => {
     publishLockAccessDiscovery(mqtt, access, [lockWith({})], people);
     publishLockAccessDiscovery(mqtt, config, [lockWith({})], people);
     assert.deepEqual(switches(mqtt), []);
+  });
+});
+
+describe('siren mapper (sirens feature)', () => {
+  const sirens = testConfig({ features: new Set([Features.SIRENS]) });
+  const siren = (state = 'QUIET') => ({ ...makeDevice('DRIV:dev:sr1', ['alert'], { 'alert:state': state }), type: 'Siren' });
+
+  it('maps sirens, not keypads or other devices that can sound an alert', () => {
+    assert.equal(sirenMapper.matches(siren()), true);
+    assert.equal(sirenMapper.matches({ ...makeDevice('DRIV:dev:kp1', ['alert', 'keypad']), type: 'KeyPad' }), false);
+  });
+
+  it('sounds and silences the siren', () => {
+    const [disc] = sirenMapper.buildDiscovery(sirens, siren());
+    assert.equal(disc.topic, 'homeassistant/siren/arcus/sr1_siren/config');
+    assert.equal(disc.payload.command_topic, 'arcus/sr1/siren/set');
+    assert.deepEqual(sirenMapper.buildState(sirens, siren()), { siren: 'OFF' });
+    assert.deepEqual(sirenMapper.buildState(sirens, siren('ALERTING')), { siren: 'ON' });
+    assert.deepEqual(sirenMapper.handleCommand(sirens, siren(), 'siren', 'ON'), { 'alert:state': 'ALERTING' });
+    assert.deepEqual(sirenMapper.handleCommand(sirens, siren(), 'siren', 'OFF'), { 'alert:state': 'QUIET' });
+    assert.equal(sirenMapper.handleCommand(sirens, siren(), 'siren', 'LOUDER'), null);
+  });
+
+  it('offers nothing with the feature off', () => {
+    assert.deepEqual(sirenMapper.buildDiscovery(config, siren()), []);
+    assert.deepEqual(sirenMapper.buildState(config, siren('ALERTING')), {});
+    assert.equal(sirenMapper.handleCommand(config, siren(), 'siren', 'ON'), null);
   });
 });

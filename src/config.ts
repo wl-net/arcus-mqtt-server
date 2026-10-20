@@ -24,6 +24,8 @@ export const Features = {
   BUZZ_IN: 'buzz_in',
   /** A switch per person on each lock that adds or removes their Arcus PIN */
   LOCK_ACCESS: 'lock_access',
+  /** A siren entity for each siren, to sound it from Home Assistant */
+  SIRENS: 'sirens',
 } as const;
 
 export type Feature = (typeof Features)[keyof typeof Features];

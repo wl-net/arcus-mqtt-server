@@ -5,7 +5,7 @@ import {
   MotorizedDoor, Smoke, CarbonMonoxide, Glass, Tilt, PowerUse,
   Hub, HubConnection, HubPower, DeviceAdvanced,
   Color, ColorTemperature, Light, Valve, Shade, Vent,
-  IrrigationController, IrrigationZone, Presence,
+  IrrigationController, IrrigationZone, Presence, Alert,
 } from './capabilities.js';
 
 const MOCK_PERSON_IDS = {
@@ -339,6 +339,20 @@ export function createMockDevices(): ArcusDevice[] {
         [DevicePower.ATTR_SOURCE]: DevicePower.SOURCE_BATTERY,
         [DevicePower.ATTR_BATTERY]: 70,
         [Device.ATTR_DEVTYPEHINT]: 'Tilt',
+      },
+    },
+
+    // --- Siren ---
+    {
+      address: 'DRIV:dev:siren-001',
+      name: 'Hallway Siren',
+      type: 'Siren',
+      caps: new Set([Base.NAMESPACE, Device.NAMESPACE, DevicePower.NAMESPACE, Alert.NAMESPACE]),
+      attributes: {
+        [Alert.ATTR_STATE]: Alert.STATE_QUIET,
+        [DevicePower.ATTR_SOURCE]: DevicePower.SOURCE_BATTERY,
+        [DevicePower.ATTR_BATTERY]: 90,
+        [Device.ATTR_DEVTYPEHINT]: 'Siren',
       },
     },
 
