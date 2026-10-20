@@ -176,6 +176,7 @@ export function createMockDevices(): ArcusDevice[] {
       caps: new Set([Base.NAMESPACE, Device.NAMESPACE, DevicePower.NAMESPACE, DoorLock.NAMESPACE]),
       attributes: {
         [DoorLock.ATTR_LOCKSTATE]: DoorLock.LOCKSTATE_LOCKED,
+        [DoorLock.ATTR_SUPPORTSBUZZIN]: true,
         [DoorLock.ATTR_SLOTS]: '{}',
         [DevicePower.ATTR_SOURCE]: DevicePower.SOURCE_BATTERY,
         [DevicePower.ATTR_BATTERY]: 78,

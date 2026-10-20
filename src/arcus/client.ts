@@ -1,5 +1,5 @@
 import type { ArcusDevice, ArcusAttributes, ArcusMethodCall, AlarmState, SceneInfo } from './types.js';
-import { IrrigationController, IrrigationZone } from './capabilities.js';
+import { DoorLock, IrrigationController, IrrigationZone } from './capabilities.js';
 import { createMockDevices, createMockHub } from './mock-data.js';
 
 export interface ArcusClient {
@@ -105,6 +105,14 @@ export class MockArcusClient implements ArcusClient {
         [`${IrrigationZone.ATTR_WATERINGDURATION}:${zone}`]: 0,
         [IrrigationController.ATTR_CONTROLLERSTATE]: IrrigationController.CONTROLLERSTATE_NOT_WATERING,
       });
+    } else if (call.method === DoorLock.CMD_BUZZIN) {
+      // Like the lock drivers: unlock if locked, then lock again shortly after
+      const device = this.devices.find(d => d.address === address);
+      if (device?.attributes[DoorLock.ATTR_LOCKSTATE] !== DoorLock.LOCKSTATE_LOCKED) return;
+      await this.sendCommand(address, { [DoorLock.ATTR_LOCKSTATE]: DoorLock.LOCKSTATE_UNLOCKED });
+      setTimeout(() => {
+        void this.sendCommand(address, { [DoorLock.ATTR_LOCKSTATE]: DoorLock.LOCKSTATE_LOCKED });
+      }, 30_000).unref();
     }
   }
 

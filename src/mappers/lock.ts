@@ -1,4 +1,4 @@
-import type { ArcusDevice, ArcusAttributes } from '../arcus/types.js';
+import type { ArcusDevice, ArcusAttributes, ArcusMethodCall } from '../arcus/types.js';
 import { DeviceAdvanced, DoorLock } from '../arcus/capabilities.js';
 import type { Config } from '../config.js';
 import type { HADiscoveryConfig } from '../ha/discovery.js';
@@ -14,12 +14,20 @@ import type { Mapper } from './index.js';
 const ERROR_JAM = 'WARN_JAM';
 const STATE_JAMMED = 'JAMMED';
 
+/**
+ * Buzz in (doorlock:BuzzIn) unlocks a locked door and has the driver lock it again shortly
+ * after (45 seconds on Schlage deadbolts); it does nothing if the door is already unlocked
+ */
+function supportsBuzzIn(device: ArcusDevice): boolean {
+  return device.attributes[DoorLock.ATTR_SUPPORTSBUZZIN] === true;
+}
+
 function isJammed(device: ArcusDevice): boolean {
   const errors = device.attributes[DeviceAdvanced.ATTR_ERRORS];
   return typeof errors === 'object' && !Array.isArray(errors) && ERROR_JAM in errors;
 }
 
-/** Maps Arcus doorlock → HA lock */
+/** Maps Arcus doorlock → HA lock, plus a buzz-in button where supported */
 export const lockMapper: Mapper = {
   matches(device: ArcusDevice): boolean {
     return device.caps.has(DoorLock.NAMESPACE);
@@ -29,7 +37,7 @@ export const lockMapper: Mapper = {
     const id = deviceId(device.address);
     const objectId = `${id}_lock`;
 
-    return [
+    const configs: HADiscoveryConfig[] = [
       {
         topic: discoveryTopic(config, 'lock', objectId),
         payload: {
@@ -51,6 +59,24 @@ export const lockMapper: Mapper = {
         },
       },
     ];
+
+    if (supportsBuzzIn(device)) {
+      const buttonId = `${id}_buzz_in`;
+      configs.push({
+        topic: discoveryTopic(config, 'button', buttonId),
+        payload: {
+          name: 'Buzz in',
+          unique_id: buttonId,
+          object_id: buttonId,
+          command_topic: commandTopic(config, device.address, 'buzz_in'),
+          payload_press: 'PRESS',
+          device: buildDeviceInfo(config, device),
+          ...buildAvailability(config, device),
+        },
+      });
+    }
+
+    return configs;
   },
 
   buildState(_config: Config, device: ArcusDevice): Record<string, unknown> {
@@ -72,5 +98,15 @@ export const lockMapper: Mapper = {
     if (cmd === 'LOCK') return { [DoorLock.ATTR_LOCKSTATE]: DoorLock.LOCKSTATE_LOCKED };
     if (cmd === 'UNLOCK') return { [DoorLock.ATTR_LOCKSTATE]: DoorLock.LOCKSTATE_UNLOCKED };
     return null;
+  },
+
+  handleMethodCommand(
+    _config: Config,
+    device: ArcusDevice,
+    entity: string,
+    payload: string,
+  ): ArcusMethodCall | null {
+    if (entity !== 'buzz_in' || payload !== 'PRESS' || !supportsBuzzIn(device)) return null;
+    return { method: DoorLock.CMD_BUZZIN, args: {} };
   },
 };

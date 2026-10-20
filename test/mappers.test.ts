@@ -106,6 +106,17 @@ describe('lock mapper', () => {
     assert.deepEqual(lockMapper.buildState(config, device), { lock: 'LOCKED' });
   });
 
+  it('adds a buzz-in button only for locks that support it', () => {
+    const plain = makeDevice('DRIV:dev:l1', ['doorlock'], { 'doorlock:lockstate': 'LOCKED' });
+    assert.equal(discoveryById(lockMapper, plain).has('l1_buzz_in'), false);
+    assert.equal(lockMapper.handleMethodCommand?.(config, plain, 'buzz_in', 'PRESS'), null);
+
+    const buzzable = makeDevice('DRIV:dev:l1', ['doorlock'], { 'doorlock:lockstate': 'LOCKED', 'doorlock:supportsBuzzIn': true });
+    assert.equal(discoveryById(lockMapper, buzzable).get('l1_buzz_in')?.command_topic, 'arcus/l1/buzz_in/set');
+    assert.deepEqual(lockMapper.handleMethodCommand?.(config, buzzable, 'buzz_in', 'PRESS'), { method: 'doorlock:BuzzIn', args: {} });
+    assert.equal(lockMapper.handleMethodCommand?.(config, buzzable, 'lock', 'UNLOCK'), null);
+  });
+
   it('translates lock commands', () => {
     const device = makeDevice('DRIV:dev:l1', ['doorlock']);
     assert.deepEqual(lockMapper.handleCommand(config, device, 'lock', 'UNLOCK'), { 'doorlock:lockstate': 'UNLOCKED' });

@@ -33,7 +33,7 @@ Arcus Platform ──► Arcus MQTT Server ──► MQTT broker ◄── Home 
 | Tilt sensor | `binary_sensor` | Garage door open (flat)/closed (upright) |
 | Power meter | `sensor` | Power (W) and cumulative energy (Wh) |
 | Hub | `binary_sensor`, `sensor` | Hub connectivity, mains power (off = running on battery), battery level |
-| Door lock | `lock` | Lock/unlock, locking/unlocking, jammed |
+| Door lock | `lock`, `button` | Lock/unlock, locking/unlocking, jammed; buzz in where the lock supports it |
 | Garage door opener | `cover` (garage) | Open/close, opening/closing |
 | Water valve | `valve` (water) | Open/close, opening/closing |
 | Irrigation controller | `valve` (water) + `number` per zone | Water or stop each zone; watering time per zone, used when a zone is opened |
@@ -180,6 +180,7 @@ All configuration is via environment variables. The Home Assistant app offers th
 - **Buttons.** Each button press fires a device trigger: in an automation, choose the remote as the device, then the button. Arcus only reports presses, so holds and double presses can't be told apart from single presses.
 - **Key fob presence.** A fob shows as away once the hub hasn't heard from it for a while (10 minutes for Iris fobs), and home again as soon as it's heard.
 - **Emergency heat.** Thermostats whose Arcus driver supports emergency heat get an **Emergency heat** switch. On, the thermostat runs only its backup heat, as a heat pump needs when it's too cold outside for the compressor; off, it goes back to its previous mode. The switch appears whether or not the thermostat controls a heat pump, so disable it in Home Assistant if you don't need it.
+- **Buzz in.** Locks that support it get a **Buzz in** button: it unlocks a locked door, and the lock locks itself again shortly after (45 seconds on Schlage deadbolts). It does nothing if the door is already unlocked. HomeKit asks you to unlock your iPhone before it unlocks a lock, but HomeKit Bridge turns buttons into switches, which have no such check, so leave this button out of HomeKit Bridge unless you want that.
 - **HomeKit.** HomeKit Bridge sets up an accessory's controls when it creates it. After updating this server, reload HomeKit Bridge (**Settings → Devices & Services → HomeKit Bridge → ⋮ → Reload**) so changes such as new fan modes reach HomeKit. If an accessory still misbehaves, use the `homekit.reset_accessory` action on it.
 - **Removed devices.** Devices, scenes and entities removed in Arcus are removed from Home Assistant on the next sync. This only works for devices the server has seen since it last started: anything removed while it was down stays in Home Assistant as unavailable, and must be deleted there by hand.
 
@@ -213,7 +214,7 @@ src/
     ├── light.ts          # dim/color/colortemp → light
     ├── climate.ts        # therm → climate, emergency heat switch
     ├── binary-sensor.ts  # cont/mot/leakh2o/smoke/co/glass/tilt/pres → binary_sensor
-    ├── lock.ts           # doorlock → lock
+    ├── lock.ts           # doorlock → lock, buzz-in button
     ├── cover.ts          # motdoor → cover (garage)
     ├── sensor.ts         # temp/humid/battery/pow → sensor
     ├── device-trigger.ts # but, one per button → device_automation
