@@ -72,6 +72,13 @@ describe('sensor mapper', () => {
     assert.deepEqual(sensorMapper.buildState(config, device), { power: 42, energy: 12450 });
   });
 
+  it('skips sensors whose attribute the driver never reports', () => {
+    const device = makeDevice('DRIV:dev:p2', ['pow'], { 'pow:instantaneous': 42 });
+    assert.deepEqual([...discoveryById(sensorMapper, device).keys()], ['p2_power']);
+    assert.deepEqual(sensorMapper.buildState(config, device), { power: 42 });
+    assert.equal(sensorMapper.matches(makeDevice('DRIV:dev:p3', ['pow'], {})), false);
+  });
+
   it('only adds a battery sensor for battery-powered devices', () => {
     const mains = makeDevice('DRIV:dev:b1', ['devpow'], { 'devpow:source': 'LINE', 'devpow:battery': 100 });
     const battery = makeDevice('DRIV:dev:b2', ['devpow'], { 'devpow:source': 'BATTERY', 'devpow:battery': 80 });

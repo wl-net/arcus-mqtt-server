@@ -58,15 +58,22 @@ const SENSOR_DEFS: SensorDef[] = [
   },
 ];
 
+/**
+ * Whether the device gets this sensor. Drivers can declare a capability without reporting
+ * every attribute (Iris smart plugs have pow but no pow:cumulative), and HA warns on each
+ * state message whose JSON lacks a sensor's key, so the attribute itself must be there.
+ */
+function hasSensor(device: ArcusDevice, def: SensorDef): boolean {
+  if (!device.caps.has(def.cap)) return false;
+  // Only create battery sensor for battery-powered devices
+  if (def.cap === DevicePower.NAMESPACE && device.attributes[DevicePower.ATTR_SOURCE] !== DevicePower.SOURCE_BATTERY) return false;
+  return device.attributes[def.attribute] !== undefined;
+}
+
 /** Maps Arcus temp/humid/devpow(battery)/pow → HA sensor */
 export const sensorMapper: Mapper = {
   matches(device: ArcusDevice): boolean {
-    return SENSOR_DEFS.some(def => {
-      if (!device.caps.has(def.cap)) return false;
-      // Only create battery sensor for battery-powered devices
-      if (def.cap === DevicePower.NAMESPACE) return device.attributes[DevicePower.ATTR_SOURCE] === DevicePower.SOURCE_BATTERY;
-      return true;
-    });
+    return SENSOR_DEFS.some(def => hasSensor(device, def));
   },
 
   buildDiscovery(config: Config, device: ArcusDevice): HADiscoveryConfig[] {
@@ -74,8 +81,7 @@ export const sensorMapper: Mapper = {
     const configs: HADiscoveryConfig[] = [];
 
     for (const def of SENSOR_DEFS) {
-      if (!device.caps.has(def.cap)) continue;
-      if (def.cap === DevicePower.NAMESPACE && device.attributes[DevicePower.ATTR_SOURCE] !== DevicePower.SOURCE_BATTERY) continue;
+      if (!hasSensor(device, def)) continue;
 
       const objectId = `${id}_${def.suffix}`;
 
@@ -103,13 +109,7 @@ export const sensorMapper: Mapper = {
     const state: Record<string, unknown> = {};
 
     for (const def of SENSOR_DEFS) {
-      if (!device.caps.has(def.cap)) continue;
-      if (def.cap === DevicePower.NAMESPACE && device.attributes[DevicePower.ATTR_SOURCE] !== DevicePower.SOURCE_BATTERY) continue;
-
-      const val = device.attributes[def.attribute];
-      if (val !== undefined) {
-        state[def.suffix] = val;
-      }
+      if (hasSensor(device, def)) state[def.suffix] = device.attributes[def.attribute];
     }
 
     return state;
