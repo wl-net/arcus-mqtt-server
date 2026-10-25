@@ -284,6 +284,23 @@ describe('sync', () => {
     const mark = broker.published.length;
     await resync(broker, client);
     assert.deepEqual(broker.since(mark).filter(p => leftovers.includes(p.topic)), []);
+
+    // A broker that comes back with older retained messages gets them cleared again
+    for (const topic of leftovers) broker.publish(topic, '{}', true);
+    const calls = client.listDevicesCalls;
+    broker.reconnect();
+    await until(() => client.listDevicesCalls > calls && leftovers.every(t => !broker.retained.has(t)), 3000, 'resync after reconnect');
+  });
+
+  it('adds an entity as soon as its first value arrives, not at the next poll', async () => {
+    const { broker, client } = await start((c) => {
+      c.devices = [makeDevice('DRIV:dev:plug-1', ['dev', 'pow'], { 'pow:instantaneous': 5 }, 'Plug')];
+    });
+    assert.ok(!broker.retained.has('homeassistant/sensor/arcus/plug-1_energy/config'));
+
+    client.emitDevice('DRIV:dev:plug-1', { 'pow:cumulative': 1200 });
+    assert.ok(broker.retained.has('homeassistant/sensor/arcus/plug-1_energy/config'));
+    assert.equal(broker.json('arcus/plug-1/state').energy, 1200);
   });
 
   describe('alarm bypass', () => {

@@ -72,12 +72,19 @@ describe('sensor mapper', () => {
     assert.deepEqual(sensorMapper.buildState(config, device), { power: 42, energy: 12450 });
   });
 
-  it('skips sensors whose attribute the driver never reports', () => {
+  it('skips power and energy sensors whose value the driver never reports', () => {
     const device = makeDevice('DRIV:dev:p2', ['pow'], { 'pow:instantaneous': 42 });
     assert.deepEqual([...discoveryById(sensorMapper, device).keys()], ['p2_power']);
     assert.deepEqual(sensorMapper.buildState(config, device), { power: 42 });
     // Older versions made the energy sensor anyway, so it's cleared
     assert.deepEqual(sensorMapper.retiredTopics?.(config, device), ['homeassistant/sensor/arcus/p2_energy/config']);
+  });
+
+  it('keeps other sensors, unknown until the device reports, so a restart never deletes them', () => {
+    const device = makeDevice('DRIV:dev:t2', ['temp', 'humid', 'devpow'], { 'devpow:source': 'BATTERY' });
+    assert.deepEqual([...discoveryById(sensorMapper, device).keys()], ['t2_temperature', 't2_humidity', 't2_battery']);
+    assert.deepEqual(sensorMapper.buildState(config, device), { temperature: null, humidity: null, battery: null });
+    assert.deepEqual(sensorMapper.retiredTopics?.(config, device), []);
   });
 
   it('only adds a battery sensor for battery-powered devices', () => {
@@ -185,7 +192,7 @@ describe('hub mapper', () => {
 
   it('shows a power cut as mains power off', () => {
     const device = hub({ 'hubconn:state': 'OFFLINE', 'hubpow:source': 'BATTERY' });
-    assert.deepEqual(hubMapper.buildState(config, device), { connectivity: 'OFF', mains_power: 'OFF' });
+    assert.deepEqual(hubMapper.buildState(config, device), { connectivity: 'OFF', mains_power: 'OFF', battery: null });
   });
 
   it('names hub entities after the hub ID, not the "hub" every hub address ends in', () => {

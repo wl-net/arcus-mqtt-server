@@ -13,6 +13,14 @@ interface SensorDef {
   unit: string;
   suffix: string;
   stateClass: string;
+  /**
+   * Make the sensor only once the driver reports the value. Drivers that meter power set
+   * pow:instantaneous and pow:cumulative when the device is added, so a missing one means the
+   * device doesn't measure it (Iris Smart Plugs have pow but never pow:cumulative). Other
+   * values can be missing just because the device hasn't reported yet, so those sensors
+   * follow the capability, or a restart could delete them with their settings in HA.
+   */
+  needsValue?: boolean;
 }
 
 const SENSOR_DEFS: SensorDef[] = [
@@ -47,6 +55,7 @@ const SENSOR_DEFS: SensorDef[] = [
     unit: 'W',
     suffix: 'power',
     stateClass: 'measurement',
+    needsValue: true,
   },
   {
     cap: PowerUse.NAMESPACE,
@@ -55,6 +64,7 @@ const SENSOR_DEFS: SensorDef[] = [
     unit: 'Wh',
     suffix: 'energy',
     stateClass: 'total_increasing',
+    needsValue: true,
   },
 ];
 
@@ -66,13 +76,10 @@ function hasCapability(device: ArcusDevice, def: SensorDef): boolean {
   return true;
 }
 
-/**
- * Whether the device gets this sensor. Drivers can declare a capability without reporting
- * every attribute (Iris smart plugs have pow but no pow:cumulative), and HA warns on each
- * state message whose JSON lacks a sensor's key, so the attribute itself must be there.
- */
+/** Whether the device gets this sensor (see SensorDef.needsValue) */
 function hasSensor(device: ArcusDevice, def: SensorDef): boolean {
-  return hasCapability(device, def) && device.attributes[def.attribute] !== undefined;
+  if (!hasCapability(device, def)) return false;
+  return !def.needsValue || device.attributes[def.attribute] !== undefined;
 }
 
 /** Maps Arcus temp/humid/devpow(battery)/pow → HA sensor */
@@ -115,14 +122,15 @@ export const sensorMapper: Mapper = {
     const state: Record<string, unknown> = {};
 
     for (const def of SENSOR_DEFS) {
-      if (hasSensor(device, def)) state[def.suffix] = device.attributes[def.attribute];
+      // null (unknown in HA) until the device reports: a missing key makes HA log a template warning
+      if (hasSensor(device, def)) state[def.suffix] = device.attributes[def.attribute] ?? null;
     }
 
     return state;
   },
 
   retiredTopics(config: Config, device: ArcusDevice): string[] {
-    // Before 0.2.4 the capability alone made a sensor, so these may still be in HA
+    // Before 0.2.4 the capability alone made power and energy sensors, so these may still be in HA
     const id = deviceId(device.address);
     return SENSOR_DEFS
       .filter(def => hasCapability(device, def) && !hasSensor(device, def))

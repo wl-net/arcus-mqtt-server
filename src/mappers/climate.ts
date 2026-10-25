@@ -200,9 +200,10 @@ export const climateMapper: Mapper = {
       climate_action: hvacAction(device),
     };
     if (supportsEco(device)) state.climate_preset = eco ? ECO_PRESET : 'none';
-    const humidity = device.attributes[RelativeHumidity.ATTR_HUMIDITY];
-    if (device.caps.has(RelativeHumidity.NAMESPACE) && typeof humidity === 'number') {
-      state.climate_current_humidity = humidity;
+    // Same condition as current_humidity_template; null (unknown in HA) until the thermostat reports
+    if (device.caps.has(RelativeHumidity.NAMESPACE)) {
+      const humidity = device.attributes[RelativeHumidity.ATTR_HUMIDITY];
+      state.climate_current_humidity = typeof humidity === 'number' ? humidity : null;
     }
     if (supportsEmergencyHeat(device)) {
       state.emergency_heat = device.attributes[Thermostat.ATTR_EMERGENCYHEAT] === Thermostat.EMERGENCYHEAT_ON ? 'ON' : 'OFF';

@@ -314,6 +314,10 @@ Each device type is handled by a mapper that implements four methods:
 
 Mappers whose commands are Arcus method calls rather than attribute changes, such as starting irrigation, also implement **`handleMethodCommand`**. Mappers that act on live events rather than state, such as button presses, implement **`onEvent`**.
 
+The state must have every key a discovery template reads, `null` while the device hasn't reported a value: Home Assistant logs a warning for each state message missing one. `test/templates.test.ts` checks this for every mock device, both as-is and before it has reported anything.
+
+Removing or renaming an entity needs **`retiredTopics`** too, listing the topics older versions published. The server only removes topics it has published since it started, so without that, the old entity stays in Home Assistant after an update.
+
 A single device can match multiple mappers. For example, a thermostat matches both the climate mapper and the sensor mapper (for temperature/humidity readings). State from all matching mappers is merged into one JSON topic per device.
 
 ### MQTT Topics

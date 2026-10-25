@@ -24,7 +24,9 @@ function publishDiscovery(mqtt: Mqtt, config: Config, device: ArcusDevice): void
     configs.push(...mapper.buildDiscovery(config, device));
     retired.push(...mapper.retiredTopics?.(config, device) ?? []);
   }
-  clearRetiredTopics(mqtt, retired);
+  // Never clear a topic the device still publishes, or HA would drop the entity and its settings
+  const current = new Set(configs.map(c => c.topic));
+  clearRetiredTopics(mqtt, retired.filter(topic => !current.has(topic)));
   syncOwnedDiscovery(mqtt, device.address, configs);
 }
 
@@ -218,7 +220,11 @@ export async function startSync(
 
     // Update local state
     const wasOnline = isDeviceOnline(device);
+    const firstValue = Object.keys(attributes).some(key => !(key in device.attributes));
     Object.assign(device.attributes, attributes);
+
+    // A first value can add an entity (a power meter's first reading), so don't wait for the next poll
+    if (firstValue) publishDiscovery(mqtt, config, device);
 
     // Re-publish state immediately
     publishState(mqtt, config, device);

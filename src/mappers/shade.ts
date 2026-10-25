@@ -2,7 +2,7 @@ import type { ArcusDevice, ArcusAttributes } from '../arcus/types.js';
 import { Shade } from '../arcus/capabilities.js';
 import type { Config } from '../config.js';
 import type { HADiscoveryConfig } from '../ha/discovery.js';
-import { buildDeviceInfo, buildAvailability } from '../ha/discovery.js';
+import { buildDeviceInfo, buildAvailability, positionTemplate } from '../ha/discovery.js';
 import { discoveryTopic, stateTopic, commandTopic, deviceId } from '../ha/topics.js';
 import type { Mapper } from './index.js';
 
@@ -34,7 +34,7 @@ export const shadeMapper: Mapper = {
           // Arcus shades can't be stopped mid-travel through attribute sets
           payload_stop: null,
           position_topic: stateTopic(config, device.address),
-          position_template: '{{ value_json.shade_position }}',
+          position_template: positionTemplate('shade_position'),
           set_position_topic: commandTopic(config, device.address, 'shade_position'),
           device: buildDeviceInfo(config, device),
           ...buildAvailability(config, device),
@@ -45,7 +45,7 @@ export const shadeMapper: Mapper = {
 
   buildState(_config: Config, device: ArcusDevice): Record<string, unknown> {
     const level = device.attributes[Shade.ATTR_LEVEL];
-    return typeof level === 'number' ? { shade_position: level } : {};
+    return { shade_position: typeof level === 'number' ? level : null };
   },
 
   handleCommand(

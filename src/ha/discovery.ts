@@ -59,6 +59,14 @@ export function buildAvailability(config: Config, device: ArcusDevice) {
   };
 }
 
+/**
+ * A cover's position_template. The state carries null until the device reports a position;
+ * HA's cover warns that "None" is not numeric, but quietly ignores an empty payload.
+ */
+export function positionTemplate(key: string): string {
+  return `{{ value_json.${key} if value_json.${key} is not none else '' }}`;
+}
+
 interface DiscoveryCache {
   /** Last payload published per discovery topic, so unchanged configs aren't re-sent every poll */
   published: Map<string, string>;
@@ -81,11 +89,14 @@ function cacheFor(mqtt: Mqtt): DiscoveryCache {
 }
 
 /**
- * Forget which configs were published, so the next sync sends them all again. Used after
- * reconnecting, since the broker may have restarted and lost its retained messages.
+ * Forget which configs were published and which retired topics were cleared, so the next
+ * sync does both again. Used after reconnecting, since the broker may have restarted and
+ * lost its retained messages, or restored older ones.
  */
 export function resetPublishedDiscovery(mqtt: Mqtt): void {
-  cacheFor(mqtt).published.clear();
+  const cache = cacheFor(mqtt);
+  cache.published.clear();
+  cache.retired.clear();
 }
 
 /** Publish a retained discovery config, skipping it if the same payload was already published */

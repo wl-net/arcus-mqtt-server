@@ -3,7 +3,7 @@ import { Hub, HubConnection, HubPower } from '../arcus/capabilities.js';
 import type { Config } from '../config.js';
 import type { HADiscoveryConfig } from '../ha/discovery.js';
 import { buildDeviceInfo, buildAvailability } from '../ha/discovery.js';
-import { discoveryTopic, stateTopic, deviceId } from '../ha/topics.js';
+import { discoveryTopic, stateTopic, availabilityTopic, hubConnectionTopic, deviceId } from '../ha/topics.js';
 import type { Mapper } from './index.js';
 
 /**
@@ -84,9 +84,8 @@ export const hubMapper: Mapper = {
 
     if (device.caps.has(HubPower.NAMESPACE)) {
       state.mains_power = attrs[HubPower.ATTR_SOURCE] === HubPower.SOURCE_BATTERY ? 'OFF' : 'ON';
-      if (attrs[HubPower.ATTR_BATTERY] !== undefined) {
-        state.battery = attrs[HubPower.ATTR_BATTERY];
-      }
+      // null (unknown in HA) until the hub reports it, since the battery sensor follows hubpow
+      state.battery = attrs[HubPower.ATTR_BATTERY] ?? null;
     }
 
     return state;
@@ -94,15 +93,16 @@ export const hubMapper: Mapper = {
 
   retiredTopics(config: Config): string[] {
     // Before 0.2.5 every hub's ID was "hub", the last part of its SERV:<hub id>:hub address,
-    // so a second place's hub entities clashed with the first's
+    // so a second place's hub entities clashed with the first's. deviceId('hub') is still
+    // 'hub', so the topic helpers give the old topics.
     const old = 'hub';
     return [
       discoveryTopic(config, 'binary_sensor', `${old}_connectivity`),
       discoveryTopic(config, 'binary_sensor', `${old}_mains_power`),
       discoveryTopic(config, 'sensor', `${old}_battery`),
-      `${config.deviceIdPrefix}/${old}/state`,
-      `${config.deviceIdPrefix}/${old}/availability`,
-      `${config.deviceIdPrefix}/${old}/connection`,
+      stateTopic(config, old),
+      availabilityTopic(config, old),
+      hubConnectionTopic(config, old),
     ];
   },
 

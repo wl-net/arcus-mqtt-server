@@ -2,7 +2,7 @@ import type { ArcusDevice, ArcusAttributes } from '../arcus/types.js';
 import { Vent } from '../arcus/capabilities.js';
 import type { Config } from '../config.js';
 import type { HADiscoveryConfig } from '../ha/discovery.js';
-import { buildDeviceInfo, buildAvailability } from '../ha/discovery.js';
+import { buildDeviceInfo, buildAvailability, positionTemplate } from '../ha/discovery.js';
 import { discoveryTopic, stateTopic, commandTopic, deviceId } from '../ha/topics.js';
 import type { Mapper } from './index.js';
 
@@ -36,7 +36,7 @@ export const ventMapper: Mapper = {
           // Vents can't be stopped mid-travel through attribute sets
           payload_stop: null,
           position_topic: stateTopic(config, device.address),
-          position_template: '{{ value_json.vent_position }}',
+          position_template: positionTemplate('vent_position'),
           set_position_topic: commandTopic(config, device.address, 'vent_position'),
           ...common,
         },
@@ -85,8 +85,11 @@ export const ventMapper: Mapper = {
     const state: Record<string, unknown> = {
       vent_obstruction: attrs[Vent.ATTR_VENTSTATE] === Vent.VENTSTATE_OBSTRUCTION ? 'ON' : 'OFF',
     };
-    if (typeof attrs[Vent.ATTR_LEVEL] === 'number') state.vent_position = attrs[Vent.ATTR_LEVEL];
-    if (typeof attrs[Vent.ATTR_AIRPRESSURE] === 'number') state.vent_pressure = attrs[Vent.ATTR_AIRPRESSURE];
+    const level = attrs[Vent.ATTR_LEVEL];
+    state.vent_position = typeof level === 'number' ? level : null;
+    // Same condition as the pressure sensor's discovery
+    const pressure = attrs[Vent.ATTR_AIRPRESSURE];
+    if (pressure !== undefined) state.vent_pressure = typeof pressure === 'number' ? pressure : null;
     return state;
   },
 
