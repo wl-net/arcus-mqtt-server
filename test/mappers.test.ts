@@ -625,6 +625,7 @@ describe('siren mapper (sirens feature)', () => {
     const [disc] = sirenMapper.buildDiscovery(sirens, siren());
     assert.equal(disc.topic, 'homeassistant/siren/arcus/sr1_siren/config');
     assert.equal(disc.payload.command_topic, 'arcus/sr1/siren/set');
+    assert.equal(disc.payload.state_value_template, '{{ value_json.siren }}');
     assert.deepEqual(sirenMapper.buildState(sirens, siren()), { siren: 'OFF' });
     assert.deepEqual(sirenMapper.buildState(sirens, siren('ALERTING')), { siren: 'ON' });
     assert.deepEqual(sirenMapper.handleCommand(sirens, siren(), 'siren', 'ON'), { 'alert:state': 'ALERTING' });

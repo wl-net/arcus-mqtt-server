@@ -35,7 +35,8 @@ export const sirenMapper: Mapper = {
           unique_id: objectId,
           object_id: objectId,
           state_topic: stateTopic(config, device.address),
-          value_template: '{{ value_json.siren }}',
+          // HA's MQTT siren reads state_value_template; it ignores value_template
+          state_value_template: '{{ value_json.siren }}',
           command_topic: commandTopic(config, device.address, 'siren'),
           payload_on: 'ON',
           payload_off: 'OFF',
