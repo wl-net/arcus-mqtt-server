@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.5
+
+- Finishes the 0.2.4 fix: the empty **Energy** sensors that earlier versions made are now removed from Home Assistant, which stops the "'dict object' has no attribute 'energy'" warnings.
+- The hub's entities are named after its hub ID, so two bridges on one broker no longer clash. Their entity IDs change once, for example `binary_sensor.hub_connectivity` becomes `binary_sensor.lww_1234_connectivity`. Update any automations or dashboards that use the hub's connectivity, mains power or battery.
+
 ## 0.2.4
 
 - Fixes Home Assistant logging a warning such as "'dict object' has no attribute 'energy'" each time some smart plugs reported power. Devices only get the power and energy sensors their driver reports, so plugs without energy metering, such as the Iris Smart Plug, lose their empty **Energy** sensor.
