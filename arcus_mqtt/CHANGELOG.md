@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.6
+
+- Fixes 0.2.5 removing a temperature, humidity or battery sensor from Home Assistant when its device hadn't reported a value by the time the app started. Those sensors come back, showing unknown until the device reports, but a name, area or HomeKit setting you gave one must be set again.
+- The hub's battery, a thermostat's humidity and the position of vents and shades no longer make Home Assistant log warnings before the device has reported them.
+- Sirens (the `sirens` feature) now show whether they're sounding.
+- A power or energy sensor appears as soon as the device's first reading arrives, rather than at the next sync.
+
 ## 0.2.5
 
 - Finishes the 0.2.4 fix: the empty **Energy** sensors that earlier versions made are now removed from Home Assistant, which stops the "'dict object' has no attribute 'energy'" warnings.

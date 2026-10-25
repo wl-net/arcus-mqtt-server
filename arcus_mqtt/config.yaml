@@ -1,7 +1,7 @@
 # https://developers.home-assistant.io/docs/apps/configuration
 name: Arcus MQTT
 # The image tag Home Assistant pulls. The release workflow publishes it from tag v<version>
-version: "0.2.5"
+version: "0.2.6"
 slug: arcus_mqtt
 description: Arcus devices in Home Assistant, through the Mosquitto broker app
 url: https://github.com/wl-net/arcus-mqtt-server
