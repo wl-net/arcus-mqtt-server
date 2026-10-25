@@ -1,8 +1,13 @@
 import type { Config } from '../config.js';
 
-/** Extract a short stable ID from an Arcus address like "DRIV:dev:switch-001" → "switch-001" */
+/**
+ * Extract a short stable ID from an Arcus address like "DRIV:dev:switch-001" → "switch-001".
+ * A hub's address puts its hub ID in the middle ("SERV:LWW-1234:hub" → "LWW-1234"), since
+ * the last part is "hub" for every hub.
+ */
 export function deviceId(address: string): string {
   const parts = address.split(':');
+  if (parts[0] === 'SERV' && parts[2] === 'hub') return parts[1];
   return parts[parts.length - 1];
 }
 

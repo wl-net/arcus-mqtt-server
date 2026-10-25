@@ -93,7 +93,7 @@ describe('PlatformArcusClient', () => {
     it('fetches the hub as a device', async () => {
       const { client } = await connect((req) => req.messageType === 'place:GetHub'
         ? { messageType: 'place:GetHubResponse', attributes: { hub: {
-            'base:address': 'SERV:hub:LWW-1', 'base:caps': ['base', 'hub', 'hubconn'],
+            'base:address': 'SERV:LWW-1:hub', 'base:caps': ['base', 'hub', 'hubconn'],
             'hub:name': 'Upstairs Hub', 'hub:model': 'IH200', 'hubconn:state': 'ONLINE',
           } } }
         : undefined);

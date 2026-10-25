@@ -79,7 +79,7 @@ const contact = () => makeDevice('DRIV:dev:door-1', ['dev', 'devadv', 'devconn',
 const lock = () => makeDevice('DRIV:dev:lock-1', ['dev', 'devconn', 'doorlock'], {
   'doorlock:lockstate': 'LOCKED', 'devconn:state': 'ONLINE',
 }, 'Front Lock');
-const hub = () => makeDevice('SERV:hub:LWW-1', ['base', 'hub', 'hubconn', 'hubpow'], {
+const hub = () => makeDevice('SERV:LWW-1:hub', ['base', 'hub', 'hubconn', 'hubpow'], {
   'hubconn:state': 'ONLINE', 'hubpow:source': 'MAINS',
 }, 'Hub');
 
@@ -259,10 +259,31 @@ describe('sync', () => {
       const { broker, client } = await start((c) => { c.hub = hub(); });
       assert.equal(broker.retained.get('arcus/LWW-1/connection'), 'online');
 
-      client.emitDevice('SERV:hub:LWW-1', { 'hubconn:state': 'OFFLINE' });
+      client.emitDevice('SERV:LWW-1:hub', { 'hubconn:state': 'OFFLINE' });
       assert.equal(broker.retained.get('arcus/LWW-1/connection'), 'offline');
       assert.equal(broker.json('arcus/LWW-1/state').connectivity, 'OFF');
     });
+  });
+
+  it('clears what older versions left on the broker once, not on every sync', async () => {
+    const leftovers = [
+      'homeassistant/sensor/arcus/plug-1_energy/config',
+      'homeassistant/binary_sensor/arcus/hub_connectivity/config',
+      'arcus/hub/state',
+    ];
+    const broker = new FakeMqtt();
+    for (const topic of leftovers) broker.publish(topic, '{}', true);
+    const client = new FakeClient();
+    client.hub = hub();
+    client.devices = [makeDevice('DRIV:dev:plug-1', ['dev', 'pow'], { 'pow:instantaneous': 5 }, 'Plug')];
+    stop = (await startSync(broker, testConfig(), client)).stop;
+
+    for (const topic of leftovers) assert.ok(!broker.retained.has(topic), `${topic} is still retained`);
+    assert.ok(broker.retained.has('homeassistant/sensor/arcus/plug-1_power/config'));
+
+    const mark = broker.published.length;
+    await resync(broker, client);
+    assert.deepEqual(broker.since(mark).filter(p => leftovers.includes(p.topic)), []);
   });
 
   describe('alarm bypass', () => {
@@ -302,7 +323,7 @@ describe('sync', () => {
       house.scenes = [scene('place-a')];
       const barn = new FakeClient();
       barn.devices = [lock()];
-      barn.hub = makeDevice('SERV:hub:LWW-2', ['base', 'hub', 'hubconn'], { 'hubconn:state': 'ONLINE' }, 'Barn Hub');
+      barn.hub = makeDevice('SERV:LWW-2:hub', ['base', 'hub', 'hubconn'], { 'hubconn:state': 'ONLINE' }, 'Barn Hub');
       barn.scenes = [scene('place-b')];
       barn.alarm = { securityMode: 'ARMED', alarmMode: 'ON', bypassedDevices: [] };
 
@@ -316,6 +337,13 @@ describe('sync', () => {
 
       const houseTopics = new Set(houseBroker.published.map(p => p.topic));
       assert.deepEqual(barnBroker.published.map(p => p.topic).filter(t => houseTopics.has(t)), []);
+      // HA ignores an entity whose unique_id another has already taken, even from another topic
+      const uniqueIds = (broker: FakeMqtt) => [...broker.retained]
+        .filter(([topic]) => topic.startsWith('homeassistant/'))
+        .map(([, payload]) => (JSON.parse(payload) as { unique_id?: string }).unique_id)
+        .filter(id => id !== undefined);
+      const houseIds = new Set(uniqueIds(houseBroker));
+      assert.deepEqual(uniqueIds(barnBroker).filter(id => houseIds.has(id)), []);
       assert.equal(houseBroker.retained.get('arcus/alarm/state'), 'disarmed');
       assert.equal(barnBroker.retained.get('barn/alarm/state'), 'armed_away');
 

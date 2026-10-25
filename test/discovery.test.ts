@@ -27,7 +27,7 @@ describe('buildDeviceInfo', () => {
   it('links hub-paired devices to the hub with via_device', () => {
     const device = makeDevice('DRIV:dev:d1', ['dev']);
     assert.equal(buildDeviceInfo(config, device).via_device, undefined);
-    device.hubAddress = 'SERV:hub:LWW-1';
+    device.hubAddress = 'SERV:LWW-1:hub';
     assert.equal(buildDeviceInfo(config, device).via_device, 'arcus_LWW-1');
   });
 });
@@ -41,7 +41,7 @@ describe('buildAvailability', () => {
 
   it('also requires the hub for hub-paired devices', () => {
     const device = makeDevice('DRIV:dev:d1', ['dev']);
-    device.hubAddress = 'SERV:hub:LWW-1';
+    device.hubAddress = 'SERV:LWW-1:hub';
     assert.deepEqual(
       buildAvailability(config, device).availability.map(a => a.topic),
       ['arcus/bridge/availability', 'arcus/d1/availability', 'arcus/LWW-1/connection'],

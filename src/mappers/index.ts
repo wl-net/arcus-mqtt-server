@@ -32,6 +32,12 @@ export interface Mapper {
     payload: string,
   ): ArcusMethodCall | null;
 
+  /**
+   * Retained topics an older version published for this device that this one no longer
+   * uses, so they're cleared even after a restart. Optional.
+   */
+  retiredTopics?(config: Config, device: ArcusDevice): string[];
+
   /** Handle a real-time event (e.g. publish a trigger). Optional. */
   onEvent?(
     mqtt: Mqtt,

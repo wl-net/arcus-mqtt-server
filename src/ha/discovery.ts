@@ -64,6 +64,8 @@ interface DiscoveryCache {
   published: Map<string, string>;
   /** Discovery topics last published by each owner (a device address, or e.g. 'scenes') */
   byOwner: Map<string, Set<string>>;
+  /** Retired topics already cleared, so they're cleared once rather than every poll */
+  retired: Set<string>;
 }
 
 /** Per connection, since the cache describes what its broker currently holds as retained */
@@ -72,7 +74,7 @@ const caches = new WeakMap<Mqtt, DiscoveryCache>();
 function cacheFor(mqtt: Mqtt): DiscoveryCache {
   let cache = caches.get(mqtt);
   if (!cache) {
-    cache = { published: new Map(), byOwner: new Map() };
+    cache = { published: new Map(), byOwner: new Map(), retired: new Set() };
     caches.set(mqtt, cache);
   }
   return cache;
@@ -118,6 +120,20 @@ export function syncOwnedDiscovery(mqtt: Mqtt, owner: string, configs: HADiscove
 
   if (topics.size > 0) byOwner.set(owner, topics);
   else byOwner.delete(owner);
+}
+
+/**
+ * Clear retained topics an older version left behind. The owner sets start empty on every
+ * run, so syncOwnedDiscovery can only remove what this run published.
+ */
+export function clearRetiredTopics(mqtt: Mqtt, topics: string[]): void {
+  const { published, retired } = cacheFor(mqtt);
+  for (const topic of topics) {
+    if (retired.has(topic)) continue;
+    retired.add(topic);
+    published.delete(topic);
+    mqtt.publish(topic, '', true);
+  }
 }
 
 /** Remove every discovery config an owner published (e.g. the device was deleted) */

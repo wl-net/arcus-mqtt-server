@@ -92,6 +92,20 @@ export const hubMapper: Mapper = {
     return state;
   },
 
+  retiredTopics(config: Config): string[] {
+    // Before 0.2.5 every hub's ID was "hub", the last part of its SERV:<hub id>:hub address,
+    // so a second place's hub entities clashed with the first's
+    const old = 'hub';
+    return [
+      discoveryTopic(config, 'binary_sensor', `${old}_connectivity`),
+      discoveryTopic(config, 'binary_sensor', `${old}_mains_power`),
+      discoveryTopic(config, 'sensor', `${old}_battery`),
+      `${config.deviceIdPrefix}/${old}/state`,
+      `${config.deviceIdPrefix}/${old}/availability`,
+      `${config.deviceIdPrefix}/${old}/connection`,
+    ];
+  },
+
   handleCommand(): null {
     return null; // Hub status entities have no commands
   },

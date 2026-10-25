@@ -398,7 +398,7 @@ export function createMockDevices(): ArcusDevice[] {
 
 export function createMockHub(): ArcusDevice {
   return {
-    address: 'SERV:hub:LWW-1234',
+    address: 'SERV:LWW-1234:hub',
     name: 'Arcus Hub',
     type: 'IH200',
     caps: new Set([Base.NAMESPACE, Hub.NAMESPACE, HubConnection.NAMESPACE, HubPower.NAMESPACE]),

@@ -7,7 +7,7 @@ import { matchingMappers } from './mappers/index.js';
 import { DeviceConnection, DeviceAdvanced, Hub, HubConnection } from './arcus/capabilities.js';
 import { publishState, publishAvailability, publishBridgeAvailability, publishHubConnection, isDeviceOnline, clearDeviceTopics } from './ha/state.js';
 import type { HADiscoveryConfig } from './ha/discovery.js';
-import { syncOwnedDiscovery, removeOwnedDiscovery, resetPublishedDiscovery } from './ha/discovery.js';
+import { syncOwnedDiscovery, removeOwnedDiscovery, resetPublishedDiscovery, clearRetiredTopics } from './ha/discovery.js';
 import { setupCommandHandler } from './ha/command.js';
 import { publishAlarmDiscovery, publishAlarmState, publishAlarmAvailability, setupAlarmCommandHandler } from './ha/alarm.js';
 import { publishSceneDiscovery, publishSceneFired, setupSceneCommandHandler } from './ha/scenes.js';
@@ -19,9 +19,12 @@ const HUB_PROTOCOLS = new Set(['ZIGB', 'ZWAV']);
 /** Publish HA MQTT Discovery config for a device (only configs that changed; stale ones are removed) */
 function publishDiscovery(mqtt: Mqtt, config: Config, device: ArcusDevice): void {
   const configs: HADiscoveryConfig[] = [];
+  const retired: string[] = [];
   for (const mapper of matchingMappers(device)) {
     configs.push(...mapper.buildDiscovery(config, device));
+    retired.push(...mapper.retiredTopics?.(config, device) ?? []);
   }
+  clearRetiredTopics(mqtt, retired);
   syncOwnedDiscovery(mqtt, device.address, configs);
 }
 

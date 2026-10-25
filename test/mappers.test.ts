@@ -76,7 +76,8 @@ describe('sensor mapper', () => {
     const device = makeDevice('DRIV:dev:p2', ['pow'], { 'pow:instantaneous': 42 });
     assert.deepEqual([...discoveryById(sensorMapper, device).keys()], ['p2_power']);
     assert.deepEqual(sensorMapper.buildState(config, device), { power: 42 });
-    assert.equal(sensorMapper.matches(makeDevice('DRIV:dev:p3', ['pow'], {})), false);
+    // Older versions made the energy sensor anyway, so it's cleared
+    assert.deepEqual(sensorMapper.retiredTopics?.(config, device), ['homeassistant/sensor/arcus/p2_energy/config']);
   });
 
   it('only adds a battery sensor for battery-powered devices', () => {
@@ -175,7 +176,7 @@ describe('lock mapper', () => {
 
 describe('hub mapper', () => {
   const hub = (attrs: ArcusAttributes) =>
-    makeDevice('SERV:hub:LWW-1', ['base', 'hub', 'hubconn', 'hubpow'], attrs, 'Hub');
+    makeDevice('SERV:LWW-1:hub', ['base', 'hub', 'hubconn', 'hubpow'], attrs, 'Hub');
 
   it('reports connectivity, mains power and battery', () => {
     const device = hub({ 'hubconn:state': 'ONLINE', 'hubpow:source': 'MAINS', 'hubpow:Battery': 90 });
@@ -185,6 +186,11 @@ describe('hub mapper', () => {
   it('shows a power cut as mains power off', () => {
     const device = hub({ 'hubconn:state': 'OFFLINE', 'hubpow:source': 'BATTERY' });
     assert.deepEqual(hubMapper.buildState(config, device), { connectivity: 'OFF', mains_power: 'OFF' });
+  });
+
+  it('names hub entities after the hub ID, not the "hub" every hub address ends in', () => {
+    const ids = hubMapper.buildDiscovery(config, hub({ 'hubconn:state': 'ONLINE' })).map(d => d.payload.unique_id);
+    assert.deepEqual(ids, ['LWW-1_connectivity', 'LWW-1_mains_power', 'LWW-1_battery']);
   });
 
   it('does not tie hub entities to the hub connection topic', () => {

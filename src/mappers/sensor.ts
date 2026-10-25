@@ -58,22 +58,28 @@ const SENSOR_DEFS: SensorDef[] = [
   },
 ];
 
+/** Whether the device has this sensor's capability */
+function hasCapability(device: ArcusDevice, def: SensorDef): boolean {
+  if (!device.caps.has(def.cap)) return false;
+  // Only create battery sensor for battery-powered devices
+  if (def.cap === DevicePower.NAMESPACE) return device.attributes[DevicePower.ATTR_SOURCE] === DevicePower.SOURCE_BATTERY;
+  return true;
+}
+
 /**
  * Whether the device gets this sensor. Drivers can declare a capability without reporting
  * every attribute (Iris smart plugs have pow but no pow:cumulative), and HA warns on each
  * state message whose JSON lacks a sensor's key, so the attribute itself must be there.
  */
 function hasSensor(device: ArcusDevice, def: SensorDef): boolean {
-  if (!device.caps.has(def.cap)) return false;
-  // Only create battery sensor for battery-powered devices
-  if (def.cap === DevicePower.NAMESPACE && device.attributes[DevicePower.ATTR_SOURCE] !== DevicePower.SOURCE_BATTERY) return false;
-  return device.attributes[def.attribute] !== undefined;
+  return hasCapability(device, def) && device.attributes[def.attribute] !== undefined;
 }
 
 /** Maps Arcus temp/humid/devpow(battery)/pow → HA sensor */
 export const sensorMapper: Mapper = {
+  // On the capability alone, so retiredTopics also runs for devices with none of the attributes
   matches(device: ArcusDevice): boolean {
-    return SENSOR_DEFS.some(def => hasSensor(device, def));
+    return SENSOR_DEFS.some(def => hasCapability(device, def));
   },
 
   buildDiscovery(config: Config, device: ArcusDevice): HADiscoveryConfig[] {
@@ -113,6 +119,14 @@ export const sensorMapper: Mapper = {
     }
 
     return state;
+  },
+
+  retiredTopics(config: Config, device: ArcusDevice): string[] {
+    // Before 0.2.4 the capability alone made a sensor, so these may still be in HA
+    const id = deviceId(device.address);
+    return SENSOR_DEFS
+      .filter(def => hasCapability(device, def) && !hasSensor(device, def))
+      .map(def => discoveryTopic(config, 'sensor', `${id}_${def.suffix}`));
   },
 
   handleCommand(): null {
