@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.4
+
+- Fixes Home Assistant logging a warning such as "'dict object' has no attribute 'energy'" each time some smart plugs reported power. Devices only get the power and energy sensors their driver reports, so plugs without energy metering, such as the Iris Smart Plug, lose their empty **Energy** sensor.
+- Thermostats with a humidity sensor show the humidity on the thermostat too, in Home Assistant and HomeKit.
+- New optional feature `sirens`: a siren entity for each siren, to sound or silence it. Read the README's Optional features section before turning it on.
+
 ## 0.2.3
 
 - Multi-button remotes and scene controllers, such as the Zooz ZEN32, ZEN34 and ZEN37, and Iris key fobs: a trigger for each button. Before, only single-button devices sent presses.
