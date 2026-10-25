@@ -54,6 +54,8 @@ export interface Config {
   /** Set by the Supervisor when running as a Home Assistant app */
   supervisorToken: string | undefined;
   arcusMock: boolean;
+  /** In mock mode, a name that gives this bridge's mock devices their own addresses */
+  arcusMockPlace: string | undefined;
   /** Optional features that are turned on (see Features) */
   features: Set<Feature>;
   pollIntervalMs: number;
@@ -74,6 +76,7 @@ export function loadConfig(): Config {
     mqttPassword: process.env.MQTT_PASSWORD || undefined,
     supervisorToken: process.env.SUPERVISOR_TOKEN || undefined,
     arcusMock: process.env.ARCUS_MOCK === '1',
+    arcusMockPlace: process.env.ARCUS_MOCK_PLACE || undefined,
     features: parseFeatures(process.env.FEATURES),
     pollIntervalMs: parseInt(process.env.POLL_INTERVAL_MS ?? '300000', 10),
     haDiscoveryPrefix: process.env.HA_DISCOVERY_PREFIX ?? 'homeassistant',

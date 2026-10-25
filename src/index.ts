@@ -18,7 +18,7 @@ async function main() {
   // Create the Arcus client
   let client;
   if (config.arcusMock) {
-    client = new MockArcusClient();
+    client = new MockArcusClient(config.arcusMockPlace);
   } else {
     // Validate required env vars for platform mode
     if (!config.arcusBridgeUrl) {

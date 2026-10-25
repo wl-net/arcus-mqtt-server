@@ -22,7 +22,19 @@ export function createMockPeople(): PersonInfo[] {
   ];
 }
 
-export function createMockDevices(): ArcusDevice[] {
+/**
+ * Mock devices. A named place gets its own addresses, so two mock bridges on one broker
+ * look like two real places rather than the same devices twice.
+ */
+export function createMockDevices(place?: string): ArcusDevice[] {
+  const devices = buildMockDevices();
+  if (place) {
+    for (const device of devices) device.address = device.address.replace('DRIV:dev:', `DRIV:dev:${place}-`);
+  }
+  return devices;
+}
+
+function buildMockDevices(): ArcusDevice[] {
   return [
     // --- Switches ---
     {
@@ -45,6 +57,19 @@ export function createMockDevices(): ArcusDevice[] {
         [Switch.ATTR_STATE]: Switch.STATE_OFF,
         [PowerUse.ATTR_INSTANTANEOUS]: 0,
         [PowerUse.ATTR_CUMULATIVE]: 12450,
+        [DevicePower.ATTR_SOURCE]: DevicePower.SOURCE_LINE,
+        [Device.ATTR_DEVTYPEHINT]: 'Switch',
+      },
+    },
+    {
+      // Like the Iris Smart Plug: reports power but never energy, though it has pow
+      address: 'DRIV:dev:plug-001',
+      name: 'Coffee Maker',
+      type: 'Iris Smart Plug',
+      caps: new Set([Base.NAMESPACE, Device.NAMESPACE, DevicePower.NAMESPACE, Switch.NAMESPACE, PowerUse.NAMESPACE]),
+      attributes: {
+        [Switch.ATTR_STATE]: Switch.STATE_ON,
+        [PowerUse.ATTR_INSTANTANEOUS]: 850.5,
         [DevicePower.ATTR_SOURCE]: DevicePower.SOURCE_LINE,
         [Device.ATTR_DEVTYPEHINT]: 'Switch',
       },
@@ -393,12 +418,54 @@ export function createMockDevices(): ArcusDevice[] {
         [Device.ATTR_DEVTYPEHINT]: 'Keyfob',
       },
     },
+
+    // --- Paired, but nothing reported yet: Home Assistant shows their values as unknown ---
+    {
+      address: 'DRIV:dev:unreported-therm-001',
+      name: 'New Thermostat',
+      type: 'Honeywell T6 Pro',
+      caps: new Set([Base.NAMESPACE, Device.NAMESPACE, DevicePower.NAMESPACE, Thermostat.NAMESPACE, Temperature.NAMESPACE, RelativeHumidity.NAMESPACE]),
+      attributes: {
+        [DevicePower.ATTR_SOURCE]: DevicePower.SOURCE_LINE,
+        [Device.ATTR_DEVTYPEHINT]: 'Thermostat',
+      },
+    },
+    {
+      address: 'DRIV:dev:unreported-contact-001',
+      name: 'New Window',
+      type: 'Iris Contact Sensor',
+      caps: new Set([Base.NAMESPACE, Device.NAMESPACE, DevicePower.NAMESPACE, Contact.NAMESPACE, Temperature.NAMESPACE]),
+      attributes: {
+        [DevicePower.ATTR_SOURCE]: DevicePower.SOURCE_BATTERY,
+        [Device.ATTR_DEVTYPEHINT]: 'Contact',
+      },
+    },
+    {
+      address: 'DRIV:dev:unreported-shade-001',
+      name: 'New Shade',
+      type: 'Somfy Shade',
+      caps: new Set([Base.NAMESPACE, Device.NAMESPACE, DevicePower.NAMESPACE, Shade.NAMESPACE]),
+      attributes: {
+        [DevicePower.ATTR_SOURCE]: DevicePower.SOURCE_BATTERY,
+        [Device.ATTR_DEVTYPEHINT]: 'Shade',
+      },
+    },
+    {
+      address: 'DRIV:dev:unreported-vent-001',
+      name: 'New Vent',
+      type: 'Smart Vent',
+      caps: new Set([Base.NAMESPACE, Device.NAMESPACE, DevicePower.NAMESPACE, Temperature.NAMESPACE, Vent.NAMESPACE]),
+      attributes: {
+        [DevicePower.ATTR_SOURCE]: DevicePower.SOURCE_BATTERY,
+        [Device.ATTR_DEVTYPEHINT]: 'vent',
+      },
+    },
   ];
 }
 
-export function createMockHub(): ArcusDevice {
+export function createMockHub(place?: string): ArcusDevice {
   return {
-    address: 'SERV:LWW-1234:hub',
+    address: `SERV:${place ? place.toUpperCase() : 'LWW'}-1234:hub`,
     name: 'Arcus Hub',
     type: 'IH200',
     caps: new Set([Base.NAMESPACE, Hub.NAMESPACE, HubConnection.NAMESPACE, HubPower.NAMESPACE]),

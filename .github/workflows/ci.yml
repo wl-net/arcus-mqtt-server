@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Weekly, to hear about Home Assistant releases that break something
+  schedule:
+    - cron: '0 6 * * 1'
 
 permissions:
   contents: read
@@ -27,3 +30,26 @@ jobs:
       - run: npm test
         env:
           TEST_MQTT_URL: mqtt://localhost:1883
+
+  home-assistant:
+    name: Home Assistant
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Tags too, to find the release to upgrade from
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:ha
+        env:
+          # The pinned version on pushes; the latest stable release on the weekly run
+          HA_IMAGE: ${{ github.event_name == 'schedule' && 'ghcr.io/home-assistant/home-assistant:stable' || '' }}
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: home-assistant-logs
+          path: build-test/ha-logs/

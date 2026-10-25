@@ -164,6 +164,7 @@ All configuration is via environment variables. The Home Assistant app offers th
 | `MQTT_USERNAME` | — | Broker login, with `MQTT_URL` |
 | `MQTT_PASSWORD` | — | Broker password, with `MQTT_URL` |
 | `ARCUS_MOCK` | `0` | Set to `1` for mock mode |
+| `ARCUS_MOCK_PLACE` | — | In mock mode, a name such as `second` that gives the mock devices their own addresses, for running a second mock server on the same broker |
 | `POLL_INTERVAL_MS` | `300000` | Full resync interval (ms). Live events carry most updates; this is a safety net |
 | `HA_DISCOVERY_PREFIX` | `homeassistant` | HA MQTT Discovery topic prefix |
 | `DEVICE_ID_PREFIX` | `arcus` | Prefix for topics, unique IDs and device IDs. Give each place its own when several servers share a broker (see [More than one hub](#more-than-one-hub)) |
@@ -364,9 +365,12 @@ npm run dev       # Watch mode — recompiles on changes
 npm run build     # One-time compile
 npm start         # Run compiled output
 npm test          # Compile and run the test suite
+npm run test:ha   # Run against a real Home Assistant, in Docker
 ```
 
 Tests use Node's built-in test runner and live in `test/`. They compile to `build-test/` with `tsconfig.test.json`, so they never end up in `dist/` or the Docker image. `test/helpers.ts` provides a fake MQTT connection and a fake Arcus WebSocket server. `test/mqtt.test.ts` runs the MQTT client against an in-process aedes broker, which only speaks MQTT 3.1.1, and against a real MQTT 5 broker when `TEST_MQTT_URL` is set. CI runs Mosquitto for that.
+
+`npm run test:ha` needs Docker. It starts Mosquitto and Home Assistant, sets Home Assistant up through its own APIs, runs the last release in mock mode, then upgrades it to your tree alongside a second place. It fails on anything Home Assistant logs, on entities it rejected or kept from before the upgrade, on entities that never get a state, and on retained topics a fresh install wouldn't have. Container logs are saved to `build-test/ha-logs/`, and `HA_KEEP=1` leaves everything running to look around (log in as `test` / `test-password`). CI runs it on every push with the Home Assistant version pinned in `test/home-assistant.test.ts`, and weekly with the latest stable release.
 
 ### Testing a Local Build
 
@@ -385,10 +389,11 @@ Entities keep their IDs, so Home Assistant shows the local build's devices in pl
 
 The Home Assistant app pulls `ghcr.io/wl-net/arcus-mqtt-server:<version>`, where `<version>` is `version` in `arcus_mqtt/config.yaml`.
 
-1. Set the new version in `arcus_mqtt/config.yaml` and in `package.json` (`npm version <version> --no-git-tag-version`)
-2. Add an entry to `arcus_mqtt/CHANGELOG.md`, which Home Assistant shows in its update dialog, and commit
-3. Tag the commit and push the tag: `git tag -a v<version> -m <version> && git push origin v<version>`
-4. Push `main` once the release workflow has finished
+1. Check that CI passed on `main`, including the Home Assistant job, and try the changes on a real install
+2. Set the new version in `arcus_mqtt/config.yaml` and in `package.json` (`npm version <version> --no-git-tag-version`)
+3. Add an entry to `arcus_mqtt/CHANGELOG.md`, which Home Assistant shows in its update dialog, and commit
+4. Tag the commit and push the tag: `git tag -a v<version> -m <version> && git push origin v<version>`
+5. Push `main` once the release workflow has finished
 
 The release workflow runs the tests, checks that the tag matches `version`, and pushes the amd64 and arm64 image tagged `<version>` and `latest`. Home Assistant offers the update once the new `version` reaches `main`, and the update fails until the image exists, which is why `main` goes last.
 

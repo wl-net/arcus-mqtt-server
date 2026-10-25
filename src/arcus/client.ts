@@ -51,7 +51,7 @@ export interface ArcusClient {
 
 export class MockArcusClient implements ArcusClient {
   private devices: ArcusDevice[];
-  private hub = createMockHub();
+  private hub: ArcusDevice;
   private eventHandlers: Array<(address: string, attributes: ArcusAttributes) => void> = [];
   private alarmHandlers: Array<(state: AlarmState) => void> = [];
   private mockAlarm: AlarmState = {
@@ -60,8 +60,10 @@ export class MockArcusClient implements ArcusClient {
     bypassedDevices: [],
   };
 
-  constructor() {
-    this.devices = createMockDevices();
+  /** A named place gets its own device, hub and scene addresses (ARCUS_MOCK_PLACE) */
+  constructor(private readonly place?: string) {
+    this.devices = createMockDevices(place);
+    this.hub = createMockHub(place);
   }
 
   async connect(): Promise<void> {
@@ -179,7 +181,7 @@ export class MockArcusClient implements ArcusClient {
 
   async listScenes(): Promise<SceneInfo[]> {
     return [
-      { address: 'SERV:scene:mock.1', id: 'mock.1', name: 'Mock Scene', enabled: true },
+      { address: `SERV:scene:${this.place ?? 'mock'}.1`, id: `${this.place ?? 'mock'}.1`, name: 'Mock Scene', enabled: true },
     ];
   }
 
