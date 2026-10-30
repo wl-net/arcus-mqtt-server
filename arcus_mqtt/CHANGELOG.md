@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.7
+
+- Quieter logs. The new `LOG_LEVEL` option sets how much the app logs: `info` by default, or `debug` for a line on every device event.
+- Devices paired or removed in Arcus appear in or disappear from Home Assistant right away, with their first readings, instead of at the next sync up to 5 minutes later.
+- A command sent while the connection to Arcus is briefly down, such as locking a door or arming the alarm, goes through once the connection is back, instead of failing. The app waits up to 15 seconds.
+- The app reconnects by itself when its connection to Arcus stops responding, instead of staying stuck until it's restarted.
+- Fixes a reading that changed while the app was syncing sometimes going back to the old value until the device reported again.
+- The app runs as an unprivileged user instead of root.
+
 ## 0.2.6
 
 - Fixes 0.2.5 removing a temperature, humidity or battery sensor from Home Assistant when its device hadn't reported a value by the time the app started. Those sensors come back, showing unknown until the device reports, but a name, area or HomeKit setting you gave one must be set again.
