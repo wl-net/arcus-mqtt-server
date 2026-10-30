@@ -175,7 +175,7 @@ All configuration is via environment variables. The Home Assistant app offers th
 | `ARCUS_AUTH_TOKEN` | — | Auth token, alternative to username/password |
 | `ARCUS_PLACE_ID` | — | Place ID (required for client-bridge, optional for api-server) |
 | `FEATURES` | — | [Optional features](#optional-features) to turn on, comma-separated, e.g. `buzz_in,lock_access,sirens` |
-| `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`. `info` logs connections, commands, button presses, and devices being added, removed or going offline; `debug` adds a line for every device event. `ARCUS_DEBUG=1` also logs every message to and from Arcus |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`. `info` logs connections, commands, button presses, and devices being added, removed or going offline; `debug` adds a line for every device event. `ARCUS_DEBUG=1` turns on `debug` and also logs every message to and from Arcus |
 
 ## Optional features
 

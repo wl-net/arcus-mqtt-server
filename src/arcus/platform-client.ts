@@ -270,7 +270,7 @@ export class PlatformArcusClient implements ArcusClient {
       // Open sensors block a plain Arm; arm without them. HA is told via the bypassed-sensors entity.
       console.log('[PlatformClient] Devices need bypassing, sending ArmBypassed');
       throwIfErrorResponse(
-        await this.bridge.sendRequest(this.subalarmDestination, 'subalarm:ArmBypassed', { mode }),
+        await this.sendCommandRequest(this.subalarmDestination, 'subalarm:ArmBypassed', { mode }),
         'subalarm:ArmBypassed',
       );
       return;

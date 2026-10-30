@@ -1,6 +1,6 @@
 import type { Mqtt } from './mqtt.js';
 import type { ArcusClient } from './arcus/client.js';
-import type { ArcusDevice, PersonInfo, SceneInfo } from './arcus/types.js';
+import type { ArcusAttributes, ArcusDevice, PersonInfo, SceneInfo } from './arcus/types.js';
 import type { Config } from './config.js';
 import { Features, hasFeature } from './config.js';
 import { matchingMappers } from './mappers/index.js';
@@ -38,10 +38,15 @@ async function fullSync(
   devices: Map<string, ArcusDevice>,
   scenes: SceneInfo[],
   people: PersonInfo[],
+  { firstSync, changes }: {
+    /** No sync has finished yet */
+    firstSync: boolean;
+    /** Value changes received since this sync started, in order; the event handler adds to it */
+    changes: Array<[string, ArcusAttributes]>;
+  },
 ): Promise<void> {
   const deviceList = await client.listDevices();
   // Every poll fetches the list, so after the first sync only additions and removals are logged
-  const firstSync = devices.size === 0;
   (firstSync ? console.log : console.debug)(`[Sync] Fetched ${deviceList.length} devices`);
 
   // The hub isn't in the device list; fetch it separately and track it alongside the
@@ -60,8 +65,6 @@ async function fullSync(
       if (HUB_PROTOCOLS.has(String(protocol))) device.hubAddress = hub.address;
     }
     deviceList.push(hub);
-    // Before device discovery, so hub-paired devices don't start out waiting on this topic
-    publishHubConnection(mqtt, config, hub);
   }
 
   // Update the devices map in-place (don't clear — avoids dropping real-time events mid-sync)
@@ -73,6 +76,16 @@ async function fullSync(
     }
     devices.set(device.address, device);
   }
+  // The list can be older than value changes that arrived while it was fetched, which the
+  // fresh devices would undo, so apply them again, in order. This also keeps the first
+  // values of a device that was just added, which arrived before the bridge knew it.
+  for (const [address, attributes] of changes) {
+    const device = devices.get(address);
+    if (device) Object.assign(device.attributes, attributes);
+  }
+  // Before device discovery, so hub-paired devices don't start out waiting on this topic
+  if (hub) publishHubConnection(mqtt, config, hub);
+
   // Remove devices no longer present, from the map and from HA
   for (const [address, device] of devices) {
     if (!freshAddresses.has(address)) {
@@ -135,6 +148,9 @@ export async function startSync(
   const scenes: SceneInfo[] = [];
   const people: PersonInfo[] = [];
   let connected = false;
+  let synced = false;
+  /** Value changes received while a sync runs, for it to apply again; null between syncs */
+  let changesDuringSync: Array<[string, ArcusAttributes]> | null = null;
 
   // Entities stay unavailable until the first sync succeeds
   publishBridgeAvailability(mqtt, config, false);
@@ -154,8 +170,10 @@ export async function startSync(
       try {
         do {
           rerun = false;
+          changesDuringSync = [];
           try {
-            await fullSync(mqtt, config, client, devices, scenes, people);
+            await fullSync(mqtt, config, client, devices, scenes, people, { firstSync: !synced, changes: changesDuringSync });
+            synced = true;
             if (connected) publishBridgeAvailability(mqtt, config, true);
           } catch (err) {
             // A sync requested meanwhile (typically a reconnect) supersedes this failure
@@ -165,6 +183,7 @@ export async function startSync(
         } while (rerun);
       } finally {
         syncing = null;
+        changesDuringSync = null;
       }
     })();
     return syncing;
@@ -230,6 +249,7 @@ export async function startSync(
 
   // Listen for real-time device events
   client.onDeviceEvent((address, attributes) => {
+    changesDuringSync?.push([address, attributes]);
     const device = devices.get(address);
     if (!device) {
       console.debug(`[Sync] Event for unknown device ${address}, skipping`);
@@ -289,6 +309,8 @@ export async function startSync(
   return {
     stop() {
       clearInterval(interval);
+      // Shutdown marks the bridge offline next; a sync still running mustn't mark it online after that
+      connected = false;
     },
   };
 }

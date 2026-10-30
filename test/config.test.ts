@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { applyLogLevel, loadAppOptions, parseFeatures, parseLogLevel } from '../src/config.js';
+import { applyLogLevel, loadAppOptions, loadConfig, parseFeatures, parseLogLevel } from '../src/config.js';
 import { quietConsole } from './helpers.js';
 
 describe('loadAppOptions', () => {
@@ -69,6 +69,20 @@ describe('log level', () => {
     assert.equal(parseLogLevel(undefined), 'info');
     assert.equal(parseLogLevel(''), 'info');
     assert.equal(parseLogLevel('verbose'), 'info');
+  });
+
+  it('turns on debug for ARCUS_DEBUG, whatever LOG_LEVEL says', () => {
+    const saved = { ARCUS_DEBUG: process.env.ARCUS_DEBUG, LOG_LEVEL: process.env.LOG_LEVEL };
+    try {
+      process.env.ARCUS_DEBUG = '1';
+      process.env.LOG_LEVEL = 'info';
+      assert.equal(loadConfig().logLevel, 'debug');
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 
   it('silences only the console methods below the level', () => {

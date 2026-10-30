@@ -105,8 +105,8 @@ export function loadConfig(): Config {
     arcusMock: process.env.ARCUS_MOCK === '1',
     arcusMockPlace: process.env.ARCUS_MOCK_PLACE || undefined,
     features: parseFeatures(process.env.FEATURES),
-    // ARCUS_DEBUG traces the Arcus connection at debug level, so it turns that level on
-    logLevel: parseLogLevel(process.env.LOG_LEVEL || (process.env.ARCUS_DEBUG ? 'debug' : undefined)),
+    // ARCUS_DEBUG traces the Arcus connection at debug level, so it turns that level on, whatever LOG_LEVEL says
+    logLevel: process.env.ARCUS_DEBUG ? 'debug' : parseLogLevel(process.env.LOG_LEVEL),
     pollIntervalMs: parseInt(process.env.POLL_INTERVAL_MS ?? '300000', 10),
     haDiscoveryPrefix: process.env.HA_DISCOVERY_PREFIX ?? 'homeassistant',
     deviceIdPrefix: process.env.DEVICE_ID_PREFIX ?? 'arcus',

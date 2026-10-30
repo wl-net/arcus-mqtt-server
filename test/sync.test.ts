@@ -4,7 +4,7 @@ import { startSync } from '../src/sync.js';
 import type { ArcusClient } from '../src/arcus/client.js';
 import type { ArcusDevice, ArcusAttributes, ArcusMethodCall, AlarmState, PersonInfo, SceneInfo } from '../src/arcus/types.js';
 import type { Config } from '../src/config.js';
-import { FakeMqtt, makeDevice, testConfig, until, quietConsole } from './helpers.js';
+import { FakeMqtt, delay, makeDevice, testConfig, until, quietConsole } from './helpers.js';
 
 /** A scriptable ArcusClient: tests change what it returns and fire its events */
 class FakeClient implements ArcusClient {
@@ -177,6 +177,32 @@ describe('sync', () => {
     client.devices = [contact(), motion];
     client.emitDeviceListChange();
     await until(() => broker.retained.has(motionConfig) && !broker.retained.has(lockConfig), 3000, 'the sync');
+  });
+
+  it('keeps value changes that arrive while a sync fetches the devices, including a new device\'s first values', async () => {
+    const { broker, client } = await start();
+    const motion = makeDevice('DRIV:dev:motion-1', ['dev', 'devconn', 'mot'], { 'mot:motion': 'NONE', 'devconn:state': 'ONLINE' });
+    client.devices = [contact(), lock(), motion];
+    // The device list was read before these changes, as the platform's can be
+    client.listDevicesDelayMs = 50;
+    const mark = broker.published.length;
+    client.emitDeviceListChange();
+    client.emitDevice('DRIV:dev:door-1', { 'cont:contact': 'OPENED' });
+    client.emitDevice('DRIV:dev:motion-1', { 'mot:motion': 'DETECTED' });
+    await until(() => broker.since(mark, 'arcus/bridge/').length > 0, 3000, 'the sync');
+
+    assert.equal(broker.json('arcus/door-1/state').contact, 'ON');
+    assert.equal(broker.json('arcus/motion-1/state').motion, 'ON');
+  });
+
+  it('never marks the bridge online once stopped, even when a sync was still running', async () => {
+    const { broker, client } = await start();
+    client.listDevicesDelayMs = 50;
+    const mark = broker.published.length;
+    client.emitConnection(true);
+    stop!();
+    await delay(150);
+    assert.deepEqual(broker.since(mark, 'arcus/bridge/availability').map(p => p.payload), []);
   });
 
   it('removes a deleted scene', async () => {
