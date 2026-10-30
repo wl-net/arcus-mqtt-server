@@ -156,7 +156,7 @@ npm start
 
 ## Configuration
 
-All configuration is via environment variables. The Home Assistant app offers the `ARCUS_*` settings and `FEATURES` on its **Configuration** tab instead, which the server reads from `/data/options.json` (variables already set in the environment take precedence). The app gets its MQTT settings from Home Assistant and uses the defaults for the rest.
+All configuration is via environment variables. The Home Assistant app offers the `ARCUS_*` settings, `FEATURES` and `LOG_LEVEL` on its **Configuration** tab instead, which the server reads from `/data/options.json` (variables already set in the environment take precedence). The app gets its MQTT settings from Home Assistant and uses the defaults for the rest.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -175,6 +175,7 @@ All configuration is via environment variables. The Home Assistant app offers th
 | `ARCUS_AUTH_TOKEN` | — | Auth token, alternative to username/password |
 | `ARCUS_PLACE_ID` | — | Place ID (required for client-bridge, optional for api-server) |
 | `FEATURES` | — | [Optional features](#optional-features) to turn on, comma-separated, e.g. `buzz_in,lock_access,sirens` |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`. `info` logs connections, commands, button presses, and devices being added, removed or going offline; `debug` adds a line for every device event. `ARCUS_DEBUG=1` also logs every message to and from Arcus |
 
 ## Optional features
 
@@ -259,7 +260,7 @@ Turning a siren off from Home Assistant silences it, even while the Arcus alarm 
 - **Key fob presence.** A fob shows as away once the hub hasn't heard from it for a while (10 minutes for Iris fobs), and home again as soon as it's heard.
 - **Emergency heat.** Thermostats whose Arcus driver supports emergency heat get an **Emergency heat** switch. On, the thermostat runs only its backup heat, as a heat pump needs when it's too cold outside for the compressor; off, it goes back to its previous mode. The switch appears whether or not the thermostat controls a heat pump, so disable it in Home Assistant if you don't need it.
 - **HomeKit.** HomeKit Bridge sets up an accessory's controls when it creates it. After updating this server, reload HomeKit Bridge (**Settings → Devices & Services → HomeKit Bridge → ⋮ → Reload**) so changes such as new fan modes reach HomeKit. If an accessory still misbehaves, use the `homekit.reset_accessory` action on it.
-- **Removed devices.** Devices, scenes and entities removed in Arcus are removed from Home Assistant on the next sync. This only works for devices the server has seen since it last started: anything removed while it was down stays in Home Assistant as unavailable, and must be deleted there by hand.
+- **Removed devices.** Devices added or removed in Arcus are added to or removed from Home Assistant right away, and scenes and entities at the next sync. Removing only works for devices the server has seen since it last started: anything removed while it was down stays in Home Assistant as unavailable, and must be deleted there by hand.
 
 ## Architecture
 

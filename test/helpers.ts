@@ -116,6 +116,8 @@ export class FakeArcusServer {
   validTokens: Set<string> | null = null;
   /** When false, the server accepts upgrades but never sends SessionCreated */
   sendSession = true;
+  /** When false, pings go unanswered, as on a connection that died without closing */
+  answerPings = true;
   private sockets: WebSocket[] = [];
   private http!: Server;
   private wss!: WebSocketServer;
@@ -143,10 +145,14 @@ export class FakeArcusServer {
         const token = cookie?.match(/irisAuthToken=([^;]+)/)?.[1] ?? authorization?.replace(/^Bearer /, '');
         cb(!this.validTokens || (!!token && this.validTokens.has(token)), 401);
       },
+      autoPong: false,
     });
     this.wss.on('connection', (ws) => {
       const connection = ++this.connections;
       this.sockets.push(ws);
+      ws.on('ping', (data) => {
+        if (this.answerPings) ws.pong(data);
+      });
       if (this.sendSession) {
         ws.send(JSON.stringify({
           headers: {},

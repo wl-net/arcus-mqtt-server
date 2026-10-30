@@ -115,6 +115,23 @@ describe('PlatformArcusClient', () => {
       await until(() => events.length === 1, 2000, 'value change');
       assert.deepEqual(events[0], ['DRIV:dev:d1', changes]);
     });
+
+    it('reports devices being added and removed, but not other things', async () => {
+      const { server, client } = await connect(() => undefined);
+      let changes = 0;
+      client.onDeviceListChange(() => changes++);
+      await client.connect();
+
+      // Events arrive in order, so once the device ones are counted the person one has been seen
+      server.sendEvent('SERV:person:p1', 'base:Added', {});
+      server.sendEvent('DRIV:dev:d2', 'base:Added', { 'base:address': 'DRIV:dev:d2' });
+      server.sendEvent('DRIV:dev:d2', 'base:Deleted', {});
+      await until(() => changes === 2, 2000, 'device list changes');
+      server.sendEvent('SERV:person:p1', 'base:Deleted', {});
+      server.sendEvent('DRIV:dev:d1', 'base:ValueChange', { 'swit:state': 'ON' });
+      await new Promise(r => setTimeout(r, 100));
+      assert.equal(changes, 2);
+    });
   });
 
   describe('active place', () => {
@@ -179,6 +196,21 @@ describe('PlatformArcusClient', () => {
       assert.equal(cmd.destination, 'DRIV:dev:l1');
       assert.deepEqual(cmd.attributes, { 'doorlock:lockstate': 'UNLOCKED' });
       assert.equal(server.requestsOf('scene:Fire')[0].destination, 'SERV:scene:p.1');
+    });
+
+    it('waits for a reconnect to send a command sent during it', async () => {
+      const { server, client } = await connect(() => undefined);
+      const changes: boolean[] = [];
+      client.onConnectionChange((up) => changes.push(up));
+      await client.connect();
+
+      server.dropConnection();
+      await until(() => changes.includes(false), 2000, 'the drop');
+      await client.sendCommand('DRIV:dev:l1', { 'doorlock:lockstate': 'UNLOCKED' });
+      const [cmd] = server.requestsOf('base:SetAttributes');
+      assert.equal(cmd.connection, 2);
+      // Sent once the active place was restored
+      assert.ok(server.requests.indexOf(server.requestsOf('sess:SetActivePlace')[1]) < server.requests.indexOf(cmd));
     });
 
     it('rejects a refused device command', async () => {

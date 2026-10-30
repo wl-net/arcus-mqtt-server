@@ -297,6 +297,14 @@ describe('Home Assistant', { skip: !process.env.TEST_HA, timeout: 20 * 60_000 },
     await docker('network', 'rm', names.network).catch(() => undefined);
   });
 
+  it('runs the bridge as the node user once it has started', async () => {
+    const status = await docker('exec', `${run}-bridge-0`, 'cat', '/proc/1/status');
+    const ids = (field: string) => status.match(new RegExp(`^${field}:(.*)$`, 'm'))?.[1].trim().split(/\s+/).filter(Boolean);
+    assert.deepEqual(ids('Uid'), ['1000', '1000', '1000', '1000']);
+    assert.deepEqual(ids('Gid'), ['1000', '1000', '1000', '1000']);
+    assert.deepEqual(ids('Groups'), []);
+  });
+
   it('logs no warnings or errors', () => {
     const lines = logEntries.map(e => `${e.level} ${e.name} (${e.count}x): ${e.message.join(' | ')}`);
     assert.deepEqual(lines, []);

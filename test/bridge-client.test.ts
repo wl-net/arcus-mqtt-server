@@ -1,6 +1,6 @@
 import { describe, it, before, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { BridgeClient, throwIfErrorResponse } from '../src/arcus/bridge-client.js';
+import { BridgeClient, throwIfErrorResponse, type BridgeClientOptions } from '../src/arcus/bridge-client.js';
 import { FakeArcusServer, OK, delay, quietConsole, until, type ArcusRequest } from './helpers.js';
 
 type Reply = { messageType: string; attributes: Record<string, unknown> };
@@ -18,13 +18,17 @@ describe('BridgeClient', () => {
     server = client = undefined;
   });
 
-  async function start(respond: (req: ArcusRequest) => Reply | undefined | null = () => undefined, reconnectDelays = [20, 40]) {
+  async function start(
+    respond: (req: ArcusRequest) => Reply | undefined | null = () => undefined,
+    reconnectDelays = [20, 40],
+    options: BridgeClientOptions = {},
+  ) {
     server = new FakeArcusServer((req) => {
       const reply = respond(req);
       return reply === undefined ? OK : reply;
     });
     const url = await server.start();
-    client = new BridgeClient({ reconnectDelays });
+    client = new BridgeClient({ reconnectDelays, ...options });
     return { server, client, url };
   }
 
@@ -130,6 +134,54 @@ describe('BridgeClient', () => {
       await delay(100);
       assert.equal(server.handshakes.length, 1);
       assert.equal(client.reconnecting, false);
+    });
+  });
+
+  describe('dead connections', () => {
+    it('fails a connect that never gets SessionCreated, without a reconnect loop', { timeout: 5000 }, async () => {
+      const { server, client, url } = await start(undefined, undefined, { connectTimeoutMs: 50 });
+      server.sendSession = false;
+      await assert.rejects(client.connect(url, 'token'), /No SessionCreated within/);
+      await delay(150);
+      assert.equal(server.connections, 1);
+      assert.equal(client.reconnecting, false);
+    });
+
+    it('keeps reconnecting while attempts never get SessionCreated, then reports connected', async () => {
+      const { server, client, url } = await start(undefined, undefined, { connectTimeoutMs: 50 });
+      const changes: boolean[] = [];
+      client.onConnectionChange = (up) => changes.push(up);
+      await client.connect(url, 'token');
+      client.setActivePlace('place-1');
+
+      server.sendSession = false;
+      server.dropConnection();
+      await until(() => server.connections >= 3, 2000, 'attempts that time out');
+      server.sendSession = true;
+      await until(() => changes.includes(true), 2000, 'reconnect');
+      assert.deepEqual(changes, [false, true]);
+    });
+
+    it('reconnects a connection that stops answering pings', async () => {
+      const { server, client, url } = await start(undefined, undefined, { heartbeatMs: 40 });
+      const changes: boolean[] = [];
+      client.onConnectionChange = (up) => changes.push(up);
+      await client.connect(url, 'token');
+      client.setActivePlace('place-1');
+
+      server.answerPings = false;
+      await until(() => changes.includes(false), 2000, 'the dead connection to be dropped');
+      server.answerPings = true;
+      await until(() => changes.includes(true), 2000, 'reconnect');
+      assert.equal(server.connections, 2);
+    });
+
+    it('keeps a connection that answers pings', async () => {
+      const { server, client, url } = await start(undefined, undefined, { heartbeatMs: 20 });
+      await client.connect(url, 'token');
+      await delay(200);
+      assert.equal(server.connections, 1);
+      assert.equal(client.connected, true);
     });
   });
 

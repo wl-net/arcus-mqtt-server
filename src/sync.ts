@@ -40,7 +40,9 @@ async function fullSync(
   people: PersonInfo[],
 ): Promise<void> {
   const deviceList = await client.listDevices();
-  console.log(`[Sync] Fetched ${deviceList.length} devices`);
+  // Every poll fetches the list, so after the first sync only additions and removals are logged
+  const firstSync = devices.size === 0;
+  (firstSync ? console.log : console.debug)(`[Sync] Fetched ${deviceList.length} devices`);
 
   // The hub isn't in the device list; fetch it separately and track it alongside the
   // devices so its real-time value changes flow through the same event path.
@@ -66,6 +68,9 @@ async function fullSync(
   const freshAddresses = new Set<string>();
   for (const device of deviceList) {
     freshAddresses.add(device.address);
+    if (!firstSync && !devices.has(device.address)) {
+      console.log(`[Sync] Added device: ${device.name} (${device.address})`);
+    }
     devices.set(device.address, device);
   }
   // Remove devices no longer present, from the map and from HA
@@ -180,6 +185,14 @@ export async function startSync(
     });
   });
 
+  // A device paired or removed in Arcus: sync now, rather than at the next poll
+  client.onDeviceListChange(() => {
+    if (!connected) return;
+    syncAndMarkOnline().catch((err) => {
+      console.error('[Sync] Resync after a device change failed:', err);
+    });
+  });
+
   // After an MQTT reconnect, republish everything: the broker may have restarted and
   // lost its retained messages, and the will message has marked the bridge offline
   mqtt.onReconnect(() => {
@@ -199,9 +212,14 @@ export async function startSync(
   // Set up alarm command handling and event listening
   const deviceName = (address: string) => devices.get(address)?.name ?? address;
   setupAlarmCommandHandler(mqtt, config, client, deviceName);
+  // Alarm events also come for sensor changes that leave the alarm as it was, so only
+  // a change of mode is logged
+  let alarmMode = '';
   client.onAlarmEvent((alarmState) => {
     publishAlarmState(mqtt, config, alarmState, deviceName);
-    console.log(`[Sync] Real-time alarm update: ${alarmState.securityMode}`);
+    const mode = `${alarmState.securityMode} (${alarmState.alarmMode})`;
+    (mode === alarmMode ? console.debug : console.log)(`[Sync] Real-time alarm update: ${mode}`);
+    alarmMode = mode;
   });
 
   // Set up scene command handling and event listening
@@ -247,7 +265,7 @@ export async function startSync(
       mapper.onEvent?.(mqtt, config, device, attributes);
     }
 
-    console.log(`[Sync] Real-time update: ${device.name} (${address})`);
+    console.debug(`[Sync] Real-time update: ${device.name} (${address})`);
   });
 
   // Connect to the upstream client

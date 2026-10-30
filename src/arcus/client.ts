@@ -18,11 +18,17 @@ export interface ArcusClient {
   /** Start listening for real-time device events */
   connect(): Promise<void>;
 
+  /** Close the connection for good, e.g. on shutdown */
+  disconnect(): void;
+
   /** Register a callback for the upstream connection dropping (false) or being restored (true) */
   onConnectionChange(handler: (connected: boolean) => void): void;
 
   /** Register a callback for device attribute changes */
   onDeviceEvent(handler: (address: string, attributes: ArcusAttributes) => void): void;
+
+  /** Register a callback for a device being added to or removed from the place */
+  onDeviceListChange(handler: () => void): void;
 
   /** Get the current alarm subsystem state */
   getAlarmState(): Promise<AlarmState>;
@@ -68,6 +74,10 @@ export class MockArcusClient implements ArcusClient {
 
   async connect(): Promise<void> {
     console.log('[MockArcusClient] Connected (mock mode)');
+  }
+
+  disconnect(): void {
+    // No-op in mock mode: there's no connection to close
   }
 
   async listDevices(): Promise<ArcusDevice[]> {
@@ -143,6 +153,10 @@ export class MockArcusClient implements ArcusClient {
 
   onConnectionChange(_handler: (connected: boolean) => void): void {
     // No-op in mock mode: the mock connection never drops
+  }
+
+  onDeviceListChange(_handler: () => void): void {
+    // No-op in mock mode: the mock devices never change
   }
 
   async getAlarmState(): Promise<AlarmState> {

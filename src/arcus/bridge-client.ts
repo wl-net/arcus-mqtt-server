@@ -52,10 +52,18 @@ export interface BridgeMessage {
 const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_EVENT_BUFFER = 100;
 const RECONNECT_DELAYS = [1_000, 2_000, 5_000, 10_000, 30_000];
+const HEARTBEAT_MS = 30_000;
 
 export interface BridgeClientOptions {
   /** Backoff between automatic reconnect attempts; the last delay repeats */
   reconnectDelays?: number[];
+  /** How long the WebSocket upgrade, and then SessionCreated, may each take */
+  connectTimeoutMs?: number;
+  /**
+   * How often to ping the server. A connection that sends nothing back, not even
+   * a pong, from one ping to the next is dropped and reconnected.
+   */
+  heartbeatMs?: number;
 }
 
 /** The server refused the WebSocket upgrade with an HTTP error (e.g. 401 for a bad token) */
@@ -103,6 +111,8 @@ export class BridgeClient {
   private _intentionalClose = false;
   private _connected = false;
   private _reconnectDelays: number[];
+  private _connectTimeoutMs: number;
+  private _heartbeatMs: number;
   private _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   /** True while a reconnect attempt is connecting (between the timer firing and SessionCreated) */
   private _reconnectInFlight = false;
@@ -113,6 +123,8 @@ export class BridgeClient {
 
   constructor(options: BridgeClientOptions = {}) {
     this._reconnectDelays = options.reconnectDelays ?? RECONNECT_DELAYS;
+    this._connectTimeoutMs = options.connectTimeoutMs ?? REQUEST_TIMEOUT_MS;
+    this._heartbeatMs = options.heartbeatMs ?? HEARTBEAT_MS;
   }
 
   /** Optional callback fired for every unsolicited (non-response) message */
@@ -228,6 +240,7 @@ export class BridgeClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
       redirect: 'manual',
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
 
     dbg(`Login response: status=${res.status}`);
@@ -288,11 +301,23 @@ export class BridgeClient {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(wsUrl, {
         headers: { ...this._authHeaders },
+        handshakeTimeout: this._connectTimeoutMs,
       });
       this.ws = ws;
+      let settled = false;
+      let sessionTimer: ReturnType<typeof setTimeout> | undefined;
 
       ws.on('open', () => {
         log('WebSocket connected');
+        // A server that never sends SessionCreated would otherwise leave the connect,
+        // and with it the reconnect chain, waiting forever
+        sessionTimer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          reject(new Error(`No SessionCreated within ${this._connectTimeoutMs / 1000}s`));
+          ws.terminate();
+        }, this._connectTimeoutMs);
+        this._startHeartbeat(ws);
       });
 
       ws.on('unexpected-response', (_req, res) => {
@@ -305,12 +330,10 @@ export class BridgeClient {
         ws.terminate();
       });
 
-      ws.on('ping', (data) => {
-        dbg('ping received, sending pong');
-        ws.pong(data);
+      ws.on('ping', () => {
+        // ws answers with a pong by itself
+        dbg('ping received');
       });
-
-      let settled = false;
 
       ws.on('message', (data) => {
         const raw = data.toString();
@@ -327,6 +350,7 @@ export class BridgeClient {
         // Handle SessionCreated (initial welcome)
         if (msg.payload?.messageType === 'SessionCreated' && !settled) {
           settled = true;
+          clearTimeout(sessionTimer);
           const attrs = msg.payload.attributes;
           this._session = {
             personId: attrs.personId as string,
@@ -387,6 +411,7 @@ export class BridgeClient {
       });
 
       ws.on('close', (code, reason) => {
+        clearTimeout(sessionTimer);
         log(`WebSocket closed (code=${code}, reason=${reason.toString()})`);
         if (!settled) {
           settled = true;
@@ -410,6 +435,30 @@ export class BridgeClient {
         }
       });
     });
+  }
+
+  /**
+   * Ping the server, and drop the connection if nothing comes back between pings. Without
+   * this, a connection that died without closing (e.g. a router dropped it) would look up
+   * forever: no events, and every request timing out.
+   */
+  private _startHeartbeat(ws: WebSocket): void {
+    let alive = true;
+    const markAlive = () => { alive = true; };
+    ws.on('pong', markAlive);
+    ws.on('ping', markAlive);
+    ws.on('message', markAlive);
+    const timer = setInterval(() => {
+      if (!alive) {
+        log(`Nothing from the server in ${this._heartbeatMs / 1000}s, reconnecting`);
+        ws.terminate();
+        return;
+      }
+      alive = false;
+      ws.ping();
+    }, this._heartbeatMs);
+    timer.unref();
+    ws.once('close', () => clearInterval(timer));
   }
 
   private _scheduleReconnect(): void {

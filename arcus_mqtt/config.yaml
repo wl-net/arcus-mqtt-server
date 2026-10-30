@@ -30,3 +30,4 @@ schema:
   ARCUS_AUTH_TOKEN: password?
   # Optional features, comma-separated: buzz_in, lock_access, sirens (see the README)
   FEATURES: str?
+  LOG_LEVEL: list(debug|info|warn|error)?

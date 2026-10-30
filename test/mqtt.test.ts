@@ -194,6 +194,24 @@ describe('connectMqtt', () => {
     assert.deepEqual(received, ['arcus/lock-1/lock/set LOCK']);
   });
 
+  it('keeps handling messages after a handler throws', async () => {
+    const { url } = await withBroker();
+    const ha = await connectAsync(url, { protocolVersion: 4 });
+    cleanup.push(() => ha.endAsync());
+    const { mqtt } = await bridge(url);
+    const received: string[] = [];
+    mqtt.subscribe('arcus/+/+/set', (_topic, payload) => {
+      if (payload === 'BAD') throw new Error('bad payload');
+      received.push(payload);
+    });
+    await new Promise(r => setTimeout(r, 100));
+    await ha.publishAsync('arcus/lock-1/lock/set', 'BAD', { qos: 1 });
+    await ha.publishAsync('arcus/lock-1/lock/set', 'LOCK', { qos: 1 });
+
+    await until(() => received.length > 0, 2000, 'the command after the bad one');
+    assert.deepEqual(received, ['LOCK']);
+  });
+
   it('rejects a login the broker refuses', async () => {
     const { url } = await withBroker('secret');
     await assert.rejects(

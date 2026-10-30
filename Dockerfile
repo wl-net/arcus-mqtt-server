@@ -16,4 +16,6 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist dist/
+# Starts as root, since the Home Assistant app's options file is readable only by root,
+# and switches to the node user once it has read it (src/index.ts)
 CMD ["node", "dist/index.js"]

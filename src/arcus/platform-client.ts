@@ -14,6 +14,12 @@ function readInstances(value: unknown): Record<string, string[]> {
   );
 }
 
+/** How long a command from HA waits for a dropped Arcus connection to come back before failing */
+const COMMAND_RECONNECT_WAIT_MS = 15_000;
+
+/** Device addresses, as opposed to services, people and the place */
+const DEVICE_ADDRESS_PREFIX = 'DRIV:dev:';
+
 function transformDevice(raw: Record<string, unknown>): ArcusDevice {
   const address = raw['base:address'] as string;
   const name = (raw['dev:name'] as string) ?? address;
@@ -45,6 +51,7 @@ export class PlatformArcusClient implements ArcusClient {
   private alarmHandlers: Array<(state: AlarmState) => void> = [];
   private sceneHandlers: Array<(sceneAddress: string) => void> = [];
   private connectionHandlers: Array<(connected: boolean) => void> = [];
+  private deviceListHandlers: Array<() => void> = [];
 
   constructor(config: Config) {
     this.config = config;
@@ -62,7 +69,7 @@ export class PlatformArcusClient implements ArcusClient {
 
       // Detect alarm/security subsystem events
       if (event.source.startsWith('SERV:subsecurity:') || event.source.startsWith('SERV:subalarm:')) {
-        console.log(`[PlatformClient] Alarm event: ${event.messageType} → ${JSON.stringify(event.attributes)}`);
+        console.debug(`[PlatformClient] Alarm event: ${event.messageType} → ${JSON.stringify(event.attributes)}`);
         this.handleAlarmEvent();
         return;
       }
@@ -76,7 +83,17 @@ export class PlatformArcusClient implements ArcusClient {
         return;
       }
 
-      if (event.messageType !== 'base:ValueChange') return;
+      // A device was paired or removed
+      if ((event.messageType === Base.EVENT_ADDED || event.messageType === Base.EVENT_DELETED)
+        && event.source.startsWith(DEVICE_ADDRESS_PREFIX)) {
+        console.log(`[PlatformClient] Device ${event.messageType === Base.EVENT_ADDED ? 'added' : 'removed'}: ${event.source}`);
+        for (const handler of this.deviceListHandlers) {
+          handler();
+        }
+        return;
+      }
+
+      if (event.messageType !== Base.EVENT_VALUECHANGE) return;
 
       const changed: ArcusAttributes = {};
       for (const [key, value] of Object.entries(event.attributes)) {
@@ -87,7 +104,7 @@ export class PlatformArcusClient implements ArcusClient {
 
       if (Object.keys(changed).length === 0) return;
 
-      console.log(`[PlatformClient] Event: ${event.source} → ${JSON.stringify(changed)}`);
+      console.debug(`[PlatformClient] Event: ${event.source} → ${JSON.stringify(changed)}`);
       for (const handler of this.eventHandlers) {
         handler(event.source, changed);
       }
@@ -111,13 +128,25 @@ export class PlatformArcusClient implements ArcusClient {
   private handleAlarmEvent(): void {
     // Re-fetch full alarm state to ensure we have a complete picture
     this.getAlarmState().then(alarm => {
-      console.log(`[PlatformClient] Alarm state: ${JSON.stringify(alarm)}`);
+      console.debug(`[PlatformClient] Alarm state: ${JSON.stringify(alarm)}`);
       for (const handler of this.alarmHandlers) {
         handler(alarm);
       }
     }).catch(err => {
       console.error('[PlatformClient] Failed to fetch alarm state after event:', err);
     });
+  }
+
+  /**
+   * Send a command from HA. During a reconnect it waits for the session to come back first,
+   * so a lock or alarm command sent during a short drop still goes through.
+   */
+  private async sendCommandRequest(destination: string, messageType: string, attributes: Record<string, unknown>) {
+    if (!this.bridge.connected && this.bridge.reconnecting) {
+      console.log(`[PlatformClient] Waiting for the Arcus connection to come back to send ${messageType}`);
+      await this.bridge.waitForConnection(COMMAND_RECONNECT_WAIT_MS);
+    }
+    return this.bridge.sendRequest(destination, messageType, attributes);
   }
 
   async connect(): Promise<void> {
@@ -173,6 +202,10 @@ export class PlatformArcusClient implements ArcusClient {
     }
   }
 
+  disconnect(): void {
+    this.bridge.disconnect();
+  }
+
   async listDevices(): Promise<ArcusDevice[]> {
     const resp = await this.bridge.sendRequest(this.bridge.placeDestination, 'place:ListDevices', {});
     const rawDevices = resp.payload.attributes.devices as Record<string, unknown>[] | undefined;
@@ -183,7 +216,7 @@ export class PlatformArcusClient implements ArcusClient {
     }
 
     const devices = rawDevices.map(transformDevice);
-    console.log(`[PlatformClient] Listed ${devices.length} devices`);
+    console.debug(`[PlatformClient] Listed ${devices.length} devices`);
     return devices;
   }
 
@@ -199,13 +232,13 @@ export class PlatformArcusClient implements ArcusClient {
   }
 
   async sendCommand(address: string, attributes: ArcusAttributes): Promise<void> {
-    console.log(`[PlatformClient] Command → ${address}:`, attributes);
-    throwIfErrorResponse(await this.bridge.sendRequest(address, 'base:SetAttributes', attributes), 'base:SetAttributes');
+    console.debug(`[PlatformClient] Command → ${address}:`, attributes);
+    throwIfErrorResponse(await this.sendCommandRequest(address, 'base:SetAttributes', attributes), 'base:SetAttributes');
   }
 
   async callMethod(address: string, call: ArcusMethodCall): Promise<void> {
-    console.log(`[PlatformClient] ${call.method} → ${address}:`, call.args);
-    throwIfErrorResponse(await this.bridge.sendRequest(address, call.method, call.args), call.method);
+    console.debug(`[PlatformClient] ${call.method} → ${address}:`, call.args);
+    throwIfErrorResponse(await this.sendCommandRequest(address, call.method, call.args), call.method);
   }
 
   onDeviceEvent(handler: (address: string, attributes: ArcusAttributes) => void): void {
@@ -214,6 +247,10 @@ export class PlatformArcusClient implements ArcusClient {
 
   onConnectionChange(handler: (connected: boolean) => void): void {
     this.connectionHandlers.push(handler);
+  }
+
+  onDeviceListChange(handler: () => void): void {
+    this.deviceListHandlers.push(handler);
   }
 
   async getAlarmState(): Promise<AlarmState> {
@@ -227,8 +264,8 @@ export class PlatformArcusClient implements ArcusClient {
   }
 
   async armAlarm(mode: 'ON' | 'PARTIAL'): Promise<void> {
-    console.log(`[PlatformClient] Arming alarm: ${mode}`);
-    const resp = await this.bridge.sendRequest(this.subalarmDestination, 'subalarm:Arm', { mode });
+    console.debug(`[PlatformClient] Arming alarm: ${mode}`);
+    const resp = await this.sendCommandRequest(this.subalarmDestination, 'subalarm:Arm', { mode });
     if (resp.payload.messageType === 'Error' && resp.payload.attributes.code === 'security.triggeredDevices') {
       // Open sensors block a plain Arm; arm without them. HA is told via the bypassed-sensors entity.
       console.log('[PlatformClient] Devices need bypassing, sending ArmBypassed');
@@ -242,9 +279,9 @@ export class PlatformArcusClient implements ArcusClient {
   }
 
   async disarmAlarm(): Promise<void> {
-    console.log('[PlatformClient] Disarming alarm');
+    console.debug('[PlatformClient] Disarming alarm');
     throwIfErrorResponse(
-      await this.bridge.sendRequest(this.subalarmDestination, 'subalarm:Disarm', {}),
+      await this.sendCommandRequest(this.subalarmDestination, 'subalarm:Disarm', {}),
       'subalarm:Disarm',
     );
   }
@@ -291,7 +328,7 @@ export class PlatformArcusClient implements ArcusClient {
         name: s['scene:name'] as string,
         enabled: true,
       }));
-    console.log(`[PlatformClient] Listed ${scenes.length} scenes`);
+    console.debug(`[PlatformClient] Listed ${scenes.length} scenes`);
     return scenes;
   }
 
@@ -300,7 +337,7 @@ export class PlatformArcusClient implements ArcusClient {
   }
 
   async fireScene(address: string): Promise<void> {
-    console.log(`[PlatformClient] Firing scene: ${address}`);
-    throwIfErrorResponse(await this.bridge.sendRequest(address, 'scene:Fire', {}), 'scene:Fire');
+    console.debug(`[PlatformClient] Firing scene: ${address}`);
+    throwIfErrorResponse(await this.sendCommandRequest(address, 'scene:Fire', {}), 'scene:Fire');
   }
 }

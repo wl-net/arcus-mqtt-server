@@ -27,6 +27,7 @@ export interface MqttContext {
 
 /** The Supervisor API, reachable from inside a Home Assistant app */
 export const SUPERVISOR_URL = 'http://supervisor';
+const SUPERVISOR_TIMEOUT_MS = 10_000;
 
 /** Does a topic match a subscription filter with `+` (one level) and `#` (the rest) wildcards? */
 export function topicMatches(filter: string, topic: string): boolean {
@@ -44,7 +45,10 @@ export function topicMatches(filter: string, topic: string): boolean {
  * Returns null when no app provides it, e.g. Mosquitto isn't installed.
  */
 export async function supervisorMqtt(token: string, baseUrl = SUPERVISOR_URL): Promise<MqttConnection | null> {
-  const res = await fetch(`${baseUrl}/services/mqtt`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetch(`${baseUrl}/services/mqtt`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(SUPERVISOR_TIMEOUT_MS),
+  });
   if (!res.ok) return null;
   const body = await res.json() as {
     data?: { host?: string; port?: number; ssl?: boolean; username?: string; password?: string };
@@ -114,7 +118,13 @@ export function connectMqtt(
     if (packet.retain) return;
     const text = payload.toString();
     for (const sub of subscriptions) {
-      if (topicMatches(sub.filter, topic)) sub.handler(topic, text);
+      if (!topicMatches(sub.filter, topic)) continue;
+      // Anyone with an MQTT login can publish here: a message that breaks a handler mustn't take the server down
+      try {
+        sub.handler(topic, text);
+      } catch (err) {
+        console.error(`[MQTT] Handling a message on ${topic} failed:`, err);
+      }
     }
   });
 

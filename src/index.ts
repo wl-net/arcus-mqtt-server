@@ -1,14 +1,38 @@
-import { loadAppOptions, loadConfig, APP_OPTIONS_PATH } from './config.js';
+import { loadAppOptions, loadConfig, applyLogLevel, APP_OPTIONS_PATH } from './config.js';
 import { connectMqtt, resolveMqttConnection } from './mqtt.js';
 import { bridgeAvailabilityTopic } from './ha/topics.js';
-import { MockArcusClient } from './arcus/client.js';
+import { MockArcusClient, type ArcusClient } from './arcus/client.js';
 import { PlatformArcusClient } from './arcus/platform-client.js';
 import { startSync } from './sync.js';
+
+/** Within Docker's 10 second stop timeout */
+const SHUTDOWN_TIMEOUT_MS = 5000;
+
+/** The image's unprivileged user */
+const RUN_AS = 'node';
+
+/**
+ * Stop running as root. The image starts as root because the Supervisor makes the app's
+ * options file readable only by root; nothing after reading it needs root.
+ */
+function dropRoot(): void {
+  if (process.getuid?.() !== 0 || !process.setuid || !process.setgid || !process.setgroups) return;
+  try {
+    // Groups first: root's supplementary groups would otherwise stay
+    process.setgroups([]);
+    process.setgid(RUN_AS);
+    process.setuid(RUN_AS);
+  } catch (err) {
+    console.warn(`[Main] Could not switch to the ${RUN_AS} user, running as root:`, err);
+  }
+}
 
 async function main() {
   // Running as a Home Assistant app: settings come from the app's Configuration tab
   const appOptions = loadAppOptions();
+  dropRoot();
   const config = loadConfig();
+  applyLogLevel(config.logLevel);
 
   console.log('[Main] Starting Arcus MQTT Bridge');
   if (appOptions) console.log(`[Main] Loaded app options from ${APP_OPTIONS_PATH}`);
@@ -16,7 +40,7 @@ async function main() {
   console.log(`[Main] Poll interval: ${config.pollIntervalMs}ms`);
 
   // Create the Arcus client
-  let client;
+  let client: ArcusClient;
   if (config.arcusMock) {
     client = new MockArcusClient(config.arcusMockPlace);
   } else {
@@ -51,10 +75,16 @@ async function main() {
 
   console.log('[Main] Bridge is running');
 
-  // Graceful shutdown
+  // Graceful shutdown: close the Arcus session, and mark the bridge offline in HA
+  let stopping = false;
   const shutdown = async () => {
-    console.log('\n[Main] Shutting down...');
+    if (stopping) return;
+    stopping = true;
+    console.log('[Main] Shutting down...');
+    // Don't wait forever on a broker that's gone
+    setTimeout(() => process.exit(1), SHUTDOWN_TIMEOUT_MS).unref();
     sync.stop();
+    client.disconnect();
     await close();
     process.exit(0);
   };

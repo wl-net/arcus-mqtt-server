@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadAppOptions, parseFeatures } from '../src/config.js';
+import { applyLogLevel, loadAppOptions, parseFeatures, parseLogLevel } from '../src/config.js';
 import { quietConsole } from './helpers.js';
 
 describe('loadAppOptions', () => {
@@ -57,5 +57,32 @@ describe('parseFeatures', () => {
     assert.equal(parseFeatures(undefined).size, 0);
     assert.equal(parseFeatures('').size, 0);
     assert.deepEqual([...parseFeatures('teleport,buzz_in')], ['buzz_in']);
+  });
+});
+
+describe('log level', () => {
+  before(quietConsole);
+
+  it('parses LOG_LEVEL, defaulting to info', () => {
+    assert.equal(parseLogLevel('DEBUG'), 'debug');
+    assert.equal(parseLogLevel(' warn '), 'warn');
+    assert.equal(parseLogLevel(undefined), 'info');
+    assert.equal(parseLogLevel(''), 'info');
+    assert.equal(parseLogLevel('verbose'), 'info');
+  });
+
+  it('silences only the console methods below the level', () => {
+    const printed = (level: Parameters<typeof applyLogLevel>[0]) => {
+      const lines: string[] = [];
+      const target = Object.fromEntries((['debug', 'log', 'info', 'warn', 'error'] as const)
+        .map(method => [method, () => { lines.push(method); }])) as unknown as Console;
+      applyLogLevel(level, target);
+      for (const method of ['debug', 'log', 'info', 'warn', 'error'] as const) target[method]('x');
+      return lines;
+    };
+    assert.deepEqual(printed('debug'), ['debug', 'log', 'info', 'warn', 'error']);
+    assert.deepEqual(printed('info'), ['log', 'info', 'warn', 'error']);
+    assert.deepEqual(printed('warn'), ['warn', 'error']);
+    assert.deepEqual(printed('error'), ['error']);
   });
 });

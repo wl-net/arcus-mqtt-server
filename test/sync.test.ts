@@ -18,8 +18,10 @@ class FakeClient implements ArcusClient {
   failListDevices = false;
   private deviceHandlers: Array<(address: string, attributes: ArcusAttributes) => void> = [];
   private connectionHandlers: Array<(connected: boolean) => void> = [];
+  private deviceListHandlers: Array<() => void> = [];
 
   async connect(): Promise<void> {}
+  disconnect(): void {}
   async listDevices(): Promise<ArcusDevice[]> {
     this.listDevicesCalls++;
     if (this.listDevicesDelayMs) await new Promise(r => setTimeout(r, this.listDevicesDelayMs));
@@ -43,6 +45,9 @@ class FakeClient implements ArcusClient {
   }
   onConnectionChange(handler: (connected: boolean) => void): void {
     this.connectionHandlers.push(handler);
+  }
+  onDeviceListChange(handler: () => void): void {
+    this.deviceListHandlers.push(handler);
   }
   async getAlarmState(): Promise<AlarmState> {
     return { ...this.alarm };
@@ -70,6 +75,9 @@ class FakeClient implements ArcusClient {
   }
   emitConnection(connected: boolean): void {
     for (const h of this.connectionHandlers) h(connected);
+  }
+  emitDeviceListChange(): void {
+    for (const h of this.deviceListHandlers) h();
   }
 }
 
@@ -158,6 +166,17 @@ describe('sync', () => {
     client.devices = [contact(), lock()];
     await resync(broker, client);
     assert.ok(broker.retained.has(lockConfig));
+  });
+
+  it('syncs as soon as a device is added or removed in Arcus', async () => {
+    const { broker, client } = await start();
+    const lockConfig = 'homeassistant/lock/arcus/lock-1_lock/config';
+    const motion = makeDevice('DRIV:dev:motion-1', ['dev', 'devconn', 'mot'], { 'mot:motion': 'NONE', 'devconn:state': 'ONLINE' });
+    const motionConfig = 'homeassistant/binary_sensor/arcus/motion-1_motion/config';
+
+    client.devices = [contact(), motion];
+    client.emitDeviceListChange();
+    await until(() => broker.retained.has(motionConfig) && !broker.retained.has(lockConfig), 3000, 'the sync');
   });
 
   it('removes a deleted scene', async () => {

@@ -46,6 +46,32 @@ export function hasFeature(config: Config, feature: Feature): boolean {
   return config.features.has(feature);
 }
 
+/** LOG_LEVEL, least to most severe. debug adds a line for every device event */
+export const LOG_LEVELS = ['debug', 'info', 'warn', 'error'] as const;
+
+export type LogLevel = (typeof LOG_LEVELS)[number];
+
+/** Parse LOG_LEVEL, warning about a name it doesn't know; info when unset */
+export function parseLogLevel(value: string | undefined): LogLevel {
+  const name = (value ?? '').trim().toLowerCase();
+  if (!name) return 'info';
+  if ((LOG_LEVELS as readonly string[]).includes(name)) return name as LogLevel;
+  console.warn(`[Config] Unknown LOG_LEVEL: ${value}, using info`);
+  return 'info';
+}
+
+/**
+ * Silence the console methods below the level. The server logs through console.debug,
+ * console.log (info), console.warn and console.error.
+ */
+export function applyLogLevel(level: LogLevel, target: Console = console): void {
+  const rank = LOG_LEVELS.indexOf(level);
+  const off = () => {};
+  if (rank > 0) target.debug = off;
+  if (rank > 1) target.log = target.info = off;
+  if (rank > 2) target.warn = off;
+}
+
 export interface Config {
   /** Broker to connect to, e.g. mqtt://localhost:1883; unset in the app, where the Supervisor provides it */
   mqttUrl: string | undefined;
@@ -58,6 +84,7 @@ export interface Config {
   arcusMockPlace: string | undefined;
   /** Optional features that are turned on (see Features) */
   features: Set<Feature>;
+  logLevel: LogLevel;
   pollIntervalMs: number;
   haDiscoveryPrefix: string;
   deviceIdPrefix: string;
@@ -78,6 +105,8 @@ export function loadConfig(): Config {
     arcusMock: process.env.ARCUS_MOCK === '1',
     arcusMockPlace: process.env.ARCUS_MOCK_PLACE || undefined,
     features: parseFeatures(process.env.FEATURES),
+    // ARCUS_DEBUG traces the Arcus connection at debug level, so it turns that level on
+    logLevel: parseLogLevel(process.env.LOG_LEVEL || (process.env.ARCUS_DEBUG ? 'debug' : undefined)),
     pollIntervalMs: parseInt(process.env.POLL_INTERVAL_MS ?? '300000', 10),
     haDiscoveryPrefix: process.env.HA_DISCOVERY_PREFIX ?? 'homeassistant',
     deviceIdPrefix: process.env.DEVICE_ID_PREFIX ?? 'arcus',
