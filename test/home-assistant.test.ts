@@ -345,4 +345,26 @@ describe('Home Assistant', { skip: !process.env.TEST_HA, timeout: 20 * 60_000 },
       .map(e => e.entity_id);
     assert.deepEqual(unknown, []);
   });
+
+  // By default HA's MQTT light sends brightness and then ON. Each one reaches the dimmer
+  // as its own Set, and some dimmers flash on every Set.
+  it('turns a light on with one command', async () => {
+    const light = registry.find(e => e.unique_id === 'dimmer-001_light');
+    assert.ok(light, 'no light entity for the mock dimmer');
+    const entityId = light.entity_id;
+    const client = await connectAsync(brokerUrl);
+    const sent: string[] = [];
+    client.on('message', (topic) => sent.push(topic));
+    await client.subscribeAsync(`${PLACES[0].prefix}/dimmer-001/+/set`);
+
+    const turnOn = (data: Record<string, unknown>) => socket.call('call_service',
+      { domain: 'light', service: 'turn_on', target: { entity_id: entityId }, service_data: data });
+    await turnOn({ brightness_pct: 40 });
+    await turnOn({});
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    await client.endAsync();
+
+    const brightness = `${PLACES[0].prefix}/dimmer-001/light_brightness/set`;
+    assert.deepEqual(sent, [brightness, brightness]);
+  });
 });

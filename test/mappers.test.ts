@@ -447,6 +447,13 @@ describe('light mapper', () => {
     assert.equal(dimmer.payload.color_temp_command_topic, undefined);
   });
 
+  it('turns on with one brightness command instead of brightness and then ON', () => {
+    for (const caps of [['swit', 'dim'], ['swit', 'dim', 'light', 'color', 'colortemp']]) {
+      const [light] = lightMapper.buildDiscovery(config, bulb({}, caps));
+      assert.equal(light.payload.on_command_type, 'brightness');
+    }
+  });
+
   it('reports only the values for the current color mode', () => {
     const color = lightMapper.buildState(config, bulb({ 'light:colormode': 'COLOR' }));
     assert.equal(color.light_hs, '200,70');

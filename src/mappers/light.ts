@@ -63,6 +63,10 @@ export const lightMapper: Mapper = {
       command_topic: commandTopic(config, device.address, 'light'),
       payload_on: 'ON',
       payload_off: 'OFF',
+      // Turn on with just the brightness command (which also sets swit:state ON), not
+      // brightness and then ON. Each command is a separate Set to the device, and some
+      // dimmers flash on every Set.
+      on_command_type: 'brightness',
       brightness_state_topic: state,
       brightness_value_template: '{{ value_json.light_brightness }}',
       brightness_command_topic: commandTopic(config, device.address, 'light_brightness'),
