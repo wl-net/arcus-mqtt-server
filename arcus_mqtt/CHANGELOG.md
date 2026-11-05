@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.8
+
+- Setting a dimmer's brightness from Home Assistant, including turning it on at a brightness, sends the dimmer one command instead of two (brightness, then on). Some dimmers, such as the Zooz ZEN77, can flash after each command they get, so they flash at most once per change instead of twice.
+
 ## 0.2.7
 
 - Quieter logs. The new `LOG_LEVEL` option sets how much the app logs: `info` by default, or `debug` for a line on every device event.
