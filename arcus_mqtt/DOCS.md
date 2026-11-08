@@ -15,7 +15,7 @@ Set `ARCUS_BRIDGE_URL`, then either:
 
 Turn on **Show unused optional configuration options** to see the optional fields.
 
-`FEATURES` turns on optional features, comma-separated: `buzz_in` for a Buzz in button on locks, `lock_access` for a switch per person on each lock that adds or removes their PIN, `sirens` to sound sirens from Home Assistant. See the README's [Optional features](https://github.com/wl-net/arcus-mqtt-server#optional-features) before turning them on.
+`FEATURES` turns on optional features, comma-separated: `buzz_in` for a Buzz in button on locks, `lock_access` for a switch per person on each lock that adds or removes their PIN, `sirens` to sound sirens from Home Assistant, `device_settings` for an entity per device setting, such as a dimmer's LED mode. See the README's [Optional features](https://github.com/wl-net/arcus-mqtt-server#optional-features) before turning them on.
 
 `LOG_LEVEL` sets how much the app logs: `info` by default, `debug` for a line on every device event, or `warn` or `error` for problems only.
 

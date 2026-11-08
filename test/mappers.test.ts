@@ -12,6 +12,7 @@ import { ventMapper } from '../src/mappers/vent.js';
 import { irrigationMapper } from '../src/mappers/irrigation.js';
 import { deviceTriggerMapper } from '../src/mappers/device-trigger.js';
 import { sirenMapper } from '../src/mappers/siren.js';
+import { deviceSettingsMapper } from '../src/mappers/device-settings.js';
 import { publishLockAccessDiscovery } from '../src/ha/lock-access.js';
 import { Features } from '../src/config.js';
 import { matchingMappers } from '../src/mappers/index.js';
@@ -644,5 +645,90 @@ describe('siren mapper (sirens feature)', () => {
     assert.deepEqual(sirenMapper.buildDiscovery(config, siren()), []);
     assert.deepEqual(sirenMapper.buildState(config, siren('ALERTING')), {});
     assert.equal(sirenMapper.handleCommand(config, siren(), 'siren', 'ON'), null);
+  });
+});
+
+describe('device settings mapper (device_settings feature)', () => {
+  const settingsOn = testConfig({ features: new Set([Features.DEVICE_SETTINGS]) });
+  const params = [
+    { paramId: 'chimeVolume', type: 'range', description: 'Parameter 4: Chime volume (%)', min: 0, max: 10, value: 7 },
+    {
+      paramId: 'language', type: 'enum', description: 'Parameter 18: Voice language',
+      values: { '0': 'English', '2': 'French', '30': 'Device default', '5': 'Spanish' }, value: 30,
+    },
+    { paramId: 'displayMode', type: 'range', description: 'Parameter 22: Display (0=always off, 601=always on)', min: 0, max: 601 },
+    { paramId: 'chime-tone', type: 'enum', description: 'Sound for a chime', values: { '96': 'Ding', '97': 'Bell' }, value: 99 },
+    { paramId: 'noLimits', type: 'range', description: 'A range without a min or max', value: 3 },
+    { paramId: 'toggle', type: 'boolean', value: 1 },
+  ];
+  const keypad = () => makeDevice('DRIV:dev:kp1', ['dev', 'devsettings'], { 'devsettings:params': params });
+  const byId = (device = keypad()) =>
+    new Map(deviceSettingsMapper.buildDiscovery(settingsOn, device).map(d => [String(d.payload.object_id), d]));
+
+  it('makes a number per range and a select per enum, named from the description', () => {
+    const configs = byId();
+    assert.deepEqual([...configs.keys()], ['kp1_setting_chimeVolume', 'kp1_setting_language', 'kp1_setting_displayMode', 'kp1_setting_chime_tone']);
+
+    const volume = configs.get('kp1_setting_chimeVolume')!;
+    assert.equal(volume.topic, 'homeassistant/number/arcus/kp1_setting_chimeVolume/config');
+    assert.equal(volume.payload.name, 'Chime volume');
+    assert.equal(volume.payload.unit_of_measurement, '%');
+    assert.deepEqual([volume.payload.min, volume.payload.max, volume.payload.step], [0, 10, 1]);
+    assert.equal(volume.payload.entity_category, 'config');
+    assert.equal(volume.payload.command_topic, 'arcus/kp1/setting_chimeVolume/set');
+    assert.equal(volume.payload.value_template, '{{ value_json.setting_chimeVolume }}');
+
+    const language = configs.get('kp1_setting_language')!;
+    assert.equal(language.topic, 'homeassistant/select/arcus/kp1_setting_language/config');
+    assert.equal(language.payload.name, 'Voice language');
+    // In value order, not the map's text order
+    assert.deepEqual(language.payload.options, ['English', 'French', 'Spanish', 'Device default']);
+
+    // A note that isn't a unit stays in the name
+    const display = configs.get('kp1_setting_displayMode')!;
+    assert.equal(display.payload.name, 'Display (0=always off, 601=always on)');
+    assert.equal(display.payload.unit_of_measurement, undefined);
+  });
+
+  it('reports values, as labels for enums, and null for one it lacks', () => {
+    assert.deepEqual(deviceSettingsMapper.buildState(settingsOn, keypad()), {
+      setting_chimeVolume: 7,
+      setting_language: 'Device default',
+      setting_displayMode: null,
+      // 99 isn't one of its choices
+      setting_chime_tone: null,
+    });
+  });
+
+  it('changes a setting with SetParam, as a whole number within its range', () => {
+    const set = (entity: string, payload: string) => deviceSettingsMapper.handleMethodCommand!(settingsOn, keypad(), entity, payload);
+    const setParam = (paramId: string, value: string) => ({ method: 'devsettings:SetParam', args: { paramId, value } });
+    assert.deepEqual(set('setting_chimeVolume', '8'), setParam('chimeVolume', '8'));
+    assert.deepEqual(set('setting_chimeVolume', '8.0'), setParam('chimeVolume', '8'));
+    assert.deepEqual(set('setting_chimeVolume', '12.6'), setParam('chimeVolume', '10'));
+    assert.deepEqual(set('setting_chimeVolume', '-3'), setParam('chimeVolume', '0'));
+    assert.equal(set('setting_chimeVolume', 'loud'), null);
+    assert.equal(set('setting_chimeVolume', ''), null);
+    assert.deepEqual(set('setting_language', 'Spanish'), setParam('language', '5'));
+    assert.equal(set('setting_language', 'Klingon'), null);
+    assert.deepEqual(set('setting_chime_tone', 'Bell'), setParam('chime-tone', '97'));
+    assert.equal(set('setting_noLimits', '1'), null);
+    assert.equal(set('lock', 'LOCK'), null);
+    assert.equal(deviceSettingsMapper.handleCommand(settingsOn, keypad(), 'setting_chimeVolume', '8'), null);
+  });
+
+  it('offers nothing for a device without settings', () => {
+    const bare = makeDevice('DRIV:dev:kp1', ['dev', 'devsettings']);
+    assert.deepEqual(deviceSettingsMapper.buildDiscovery(settingsOn, bare), []);
+    assert.deepEqual(deviceSettingsMapper.buildState(settingsOn, bare), {});
+    assert.equal(deviceSettingsMapper.matches(makeDevice('DRIV:dev:sw1', ['dev', 'swit'])), false);
+  });
+
+  it('offers nothing with the feature off, and retires what it published', () => {
+    assert.deepEqual(deviceSettingsMapper.buildDiscovery(config, keypad()), []);
+    assert.deepEqual(deviceSettingsMapper.buildState(config, keypad()), {});
+    assert.equal(deviceSettingsMapper.handleMethodCommand!(config, keypad(), 'setting_chimeVolume', '8'), null);
+    assert.deepEqual(deviceSettingsMapper.retiredTopics!(config, keypad()), [...byId().values()].map(d => d.topic));
+    assert.deepEqual(deviceSettingsMapper.retiredTopics!(settingsOn, keypad()), []);
   });
 });

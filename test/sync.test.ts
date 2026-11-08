@@ -278,6 +278,42 @@ describe('sync', () => {
     assert.deepEqual(broker.json('arcus/lock-1/state').access, ['0000000a-0000-4000-8000-000000000001']);
   });
 
+  describe('device settings (device_settings feature)', () => {
+    const params = (rampRate: number) => [
+      { paramId: 'rampRate', type: 'range', description: 'Parameter 9: Ramp rate (seconds)', min: 0, max: 99, value: rampRate },
+    ];
+    const dimmer = (rampRate = 1) => makeDevice('DRIV:dev:dim-1', ['dev', 'swit', 'dim', 'devsettings'], {
+      'swit:state': 'ON', 'dim:brightness': 50, 'devsettings:params': params(rampRate),
+    }, 'Dimmer');
+    const topic = 'homeassistant/number/arcus/dim-1_setting_rampRate/config';
+
+    it('changes a setting from HA, and shows the value the driver reports', async () => {
+      const { broker, client } = await start(c => { c.devices = [dimmer()]; }, { features: new Set(['device_settings']) });
+      assert.ok(broker.retained.has(topic));
+      assert.equal(broker.json('arcus/dim-1/state').setting_rampRate, 1);
+
+      broker.deliver('arcus/dim-1/setting_rampRate/set', '5');
+      assert.deepEqual(client.methodCalls, [
+        { address: 'DRIV:dev:dim-1', call: { method: 'devsettings:SetParam', args: { paramId: 'rampRate', value: '5' } } },
+      ]);
+
+      client.emitDevice('DRIV:dev:dim-1', { 'devsettings:params': params(5) });
+      assert.equal(broker.json('arcus/dim-1/state').setting_rampRate, 5);
+    });
+
+    it('removes the setting entities once the feature is off, even after a restart', async () => {
+      const broker = new FakeMqtt();
+      broker.publish(topic, '{}', true);
+      const client = new FakeClient();
+      client.devices = [dimmer()];
+      stop = (await startSync(broker, testConfig(), client)).stop;
+      assert.ok(!broker.retained.has(topic));
+      assert.equal(broker.json('arcus/dim-1/state').setting_rampRate, undefined);
+      broker.deliver('arcus/dim-1/setting_rampRate/set', '5');
+      assert.deepEqual(client.methodCalls, []);
+    });
+  });
+
   it('republishes discovery after reconnecting to the broker', async () => {
     const { broker, client } = await start();
     const mark = broker.published.length;

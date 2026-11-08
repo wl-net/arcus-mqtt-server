@@ -26,11 +26,11 @@ describe('PlatformArcusClient', () => {
   }
 
   describe('attributes', () => {
-    it("keeps attributes from the device's own capabilities, including string lists and maps", async () => {
+    it("keeps attributes from the device's own capabilities, including string lists, maps and device settings", async () => {
       const { client } = await connect((req) => req.messageType === 'place:ListDevices'
         ? { messageType: 'place:ListDevicesResponse', attributes: { devices: [{
             'base:address': 'DRIV:dev:d1',
-            'base:caps': ['base', 'dev', 'devadv', 'motdoor', 'leakh2o', 'therm'],
+            'base:caps': ['base', 'dev', 'devadv', 'motdoor', 'leakh2o', 'therm', 'devsettings'],
             'dev:name': 'Garage',
             'motdoor:doorstate': 'OPEN',
             'leakh2o:state': 'LEAK',
@@ -38,6 +38,7 @@ describe('PlatformArcusClient', () => {
             'therm:schedule': [{ not: 'strings' }],
             'devadv:errors': { ERR_OBSTRUCTION: 'Door obstructed' },
             'devadv:protocolAttrs': { nested: { not: 'strings' } },
+            'devsettings:params': [{ paramId: 'ledMode', type: 'enum', values: { '0': 'Off', '1': 'On' }, value: 1 }],
             'swit:state': 'ON',
           }] } }
         : undefined);
@@ -51,6 +52,7 @@ describe('PlatformArcusClient', () => {
       assert.equal('therm:schedule' in device.attributes, false, 'kept a non-string list');
       assert.deepEqual(device.attributes['devadv:errors'], { ERR_OBSTRUCTION: 'Door obstructed' });
       assert.equal('devadv:protocolAttrs' in device.attributes, false, 'kept a non-string map');
+      assert.deepEqual(device.attributes['devsettings:params'], [{ paramId: 'ledMode', type: 'enum', values: { '0': 'Off', '1': 'On' }, value: 1 }]);
       assert.equal('swit:state' in device.attributes, false, 'kept an attribute from a capability the device lacks');
     });
 
@@ -110,7 +112,10 @@ describe('PlatformArcusClient', () => {
       client.onDeviceEvent((address, attrs) => events.push([address, attrs]));
       await client.connect();
 
-      const changes = { 'devconn:state': 'OFFLINE', 'therm:supportedmodes': ['HEAT'], 'devadv:errors': {} };
+      const changes = {
+        'devconn:state': 'OFFLINE', 'therm:supportedmodes': ['HEAT'], 'devadv:errors': {},
+        'devsettings:params': [{ paramId: 'rampRate', type: 'range', min: 0, max: 99, value: 5 }],
+      };
       server.sendEvent('DRIV:dev:d1', 'base:ValueChange', changes);
       await until(() => events.length === 1, 2000, 'value change');
       assert.deepEqual(events[0], ['DRIV:dev:d1', changes]);
@@ -217,6 +222,16 @@ describe('PlatformArcusClient', () => {
       const { client } = await connect((req) => (req.messageType === 'base:SetAttributes' ? refused : undefined));
       await client.connect();
       await assert.rejects(client.sendCommand('DRIV:dev:l1', { 'doorlock:lockstate': 'UNLOCKED' }), /base:SetAttributes failed/);
+    });
+
+    it('rejects a device setting the driver refuses, and accepts one it will send', async () => {
+      const setParam = (value: string) => ({ method: 'devsettings:SetParam', args: { paramId: 'rampRate', value } });
+      const { client } = await connect((req) => (req.messageType === 'devsettings:SetParam'
+        ? { messageType: 'devsettings:SetParamResponse', attributes: { status: req.attributes.value === '500' ? 'INVALID_VALUE' : 'PENDING' } }
+        : undefined));
+      await client.connect();
+      await assert.rejects(client.callMethod('DRIV:dev:d1', setParam('500')), /devsettings:SetParam refused: INVALID_VALUE/);
+      await client.callMethod('DRIV:dev:d1', setParam('5'));
     });
 
     it('rejects a refused scene fire', async () => {

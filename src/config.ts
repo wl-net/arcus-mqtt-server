@@ -26,6 +26,8 @@ export const Features = {
   LOCK_ACCESS: 'lock_access',
   /** A siren entity for each siren, to sound it from Home Assistant */
   SIRENS: 'sirens',
+  /** A config entity per device setting (devsettings:params), such as a dimmer's LED mode */
+  DEVICE_SETTINGS: 'device_settings',
 } as const;
 
 export type Feature = (typeof Features)[keyof typeof Features];

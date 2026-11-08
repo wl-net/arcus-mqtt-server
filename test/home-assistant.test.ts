@@ -367,4 +367,22 @@ describe('Home Assistant', { skip: !process.env.TEST_HA, timeout: 20 * 60_000 },
     const brightness = `${PLACES[0].prefix}/dimmer-001/light_brightness/set`;
     assert.deepEqual(sent, [brightness, brightness]);
   });
+
+  // The mock client changes devsettings:params the way the drivers do, so HA showing the new
+  // values means the command reached Arcus and the reported value came back
+  it('changes device settings', async () => {
+    const entityId = (uniqueId: string) => registry.find(e => e.unique_id === uniqueId)?.entity_id;
+    const led = entityId('dimmer-001_setting_ledMode');
+    const ramp = entityId('dimmer-001_setting_rampRate');
+    assert.ok(led && ramp, 'no setting entities for the mock dimmer');
+
+    await socket.call('call_service',
+      { domain: 'select', service: 'select_option', target: { entity_id: led }, service_data: { option: 'Always off' } });
+    await socket.call('call_service',
+      { domain: 'number', service: 'set_value', target: { entity_id: ramp }, service_data: { value: 5 } });
+    await waitFor(async () => {
+      const byId = new Map((await socket.call<HaState[]>('get_states')).map(s => [s.entity_id, s.state]));
+      return byId.get(led) === 'Always off' && Number(byId.get(ramp)) === 5;
+    }, 15_000, 'the new settings to show in Home Assistant');
+  });
 });

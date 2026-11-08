@@ -5,7 +5,7 @@ import {
   MotorizedDoor, Smoke, CarbonMonoxide, Glass, Tilt, PowerUse,
   Hub, HubConnection, HubPower, DeviceAdvanced,
   Color, ColorTemperature, Light, Valve, Shade, Vent,
-  IrrigationController, IrrigationZone, Presence, Alert,
+  IrrigationController, IrrigationZone, Presence, Alert, DeviceSettings,
 } from './capabilities.js';
 
 const MOCK_PERSON_IDS = {
@@ -80,12 +80,34 @@ function buildMockDevices(): ArcusDevice[] {
       address: 'DRIV:dev:dimmer-001',
       name: 'Dining Room Light',
       type: 'GE In-Wall Smart Dimmer',
-      caps: new Set([Base.NAMESPACE, Device.NAMESPACE, DevicePower.NAMESPACE, Switch.NAMESPACE, Dimmer.NAMESPACE]),
+      caps: new Set([Base.NAMESPACE, Device.NAMESPACE, DevicePower.NAMESPACE, Switch.NAMESPACE, Dimmer.NAMESPACE, DeviceSettings.NAMESPACE]),
       attributes: {
         [Switch.ATTR_STATE]: Switch.STATE_ON,
         [Dimmer.ATTR_BRIGHTNESS]: 75,
         [DevicePower.ATTR_SOURCE]: DevicePower.SOURCE_LINE,
         [Device.ATTR_DEVTYPEHINT]: 'Dimmer',
+        // Shaped like the drivers' devsettings:params
+        [DeviceSettings.ATTR_PARAMS]: [
+          {
+            paramId: 'ledMode', name: 'ledMode', type: 'enum', description: 'Parameter 2: LED indicator',
+            values: { '0': 'On when off', '1': 'On when on', '2': 'Always off', '3': 'Always on' },
+            dflt: 0, value: 0, zwaveParamNo: 2, zwaveParamSize: 1,
+          },
+          {
+            paramId: 'autoOffTimer', name: 'autoOffTimer', type: 'range',
+            description: 'Parameter 3: Auto turn-off timer (0=disabled, 1-65535=minutes)',
+            min: 0, max: 65535, dflt: 0, value: 0, zwaveParamNo: 3, zwaveParamSize: 4,
+          },
+          {
+            paramId: 'powerRestore', name: 'powerRestore', type: 'enum', description: 'Parameter 8: State after a power failure',
+            values: { '0': 'Off', '1': 'On', '2': 'Last state' },
+            dflt: 2, value: 2, zwaveParamNo: 8, zwaveParamSize: 1,
+          },
+          {
+            paramId: 'rampRate', name: 'rampRate', type: 'range', description: 'Parameter 9: Ramp rate (seconds)',
+            min: 0, max: 99, dflt: 1, value: 1, zwaveParamNo: 9, zwaveParamSize: 1,
+          },
+        ],
       },
     },
 

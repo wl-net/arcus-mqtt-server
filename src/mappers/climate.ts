@@ -26,7 +26,7 @@ const ECO_PRESET = 'eco';
 /** Modes the thermostat reports supporting, or all of them if it doesn't say */
 function supportedModes(device: ArcusDevice): string[] {
   const modes = device.attributes[Thermostat.ATTR_SUPPORTEDMODES];
-  if (Array.isArray(modes) && modes.length > 0) return modes;
+  if (Array.isArray(modes) && modes.length > 0 && modes.every(m => typeof m === 'string')) return modes;
   return [Thermostat.HVACMODE_OFF, Thermostat.HVACMODE_HEAT, Thermostat.HVACMODE_COOL, Thermostat.HVACMODE_AUTO];
 }
 

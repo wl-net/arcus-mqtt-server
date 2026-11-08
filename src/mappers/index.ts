@@ -34,7 +34,8 @@ export interface Mapper {
 
   /**
    * Retained topics an older version published for this device that this one no longer
-   * uses, so they're cleared even after a restart. Optional.
+   * uses, or that a feature now turned off published, so they're cleared even after a
+   * restart. Optional.
    */
   retiredTopics?(config: Config, device: ArcusDevice): string[];
 
@@ -61,6 +62,7 @@ import { shadeMapper } from './shade.js';
 import { ventMapper } from './vent.js';
 import { irrigationMapper } from './irrigation.js';
 import { sirenMapper } from './siren.js';
+import { deviceSettingsMapper } from './device-settings.js';
 
 /** All registered mappers, in priority order */
 export const mappers: Mapper[] = [
@@ -78,6 +80,7 @@ export const mappers: Mapper[] = [
   ventMapper,
   irrigationMapper,
   sirenMapper,
+  deviceSettingsMapper,
 ];
 
 /** Get all mappers that match a device */

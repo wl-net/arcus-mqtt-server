@@ -1,5 +1,5 @@
 import type { ArcusDevice, ArcusAttributes, ArcusMethodCall, AlarmState, PersonInfo, SceneInfo } from './types.js';
-import { DoorLock, IrrigationController, IrrigationZone } from './capabilities.js';
+import { DeviceSettings, DoorLock, IrrigationController, IrrigationZone } from './capabilities.js';
 import { createMockDevices, createMockHub, createMockPeople } from './mock-data.js';
 
 export interface ArcusClient {
@@ -144,6 +144,15 @@ export class MockArcusClient implements ArcusClient {
         slots[String(slot)] = personId;
       }
       await this.sendCommand(address, { [DoorLock.ATTR_SLOTS]: slots });
+    } else if (call.method === DeviceSettings.CMD_SETPARAM) {
+      // Like the drivers: the new value shows in devsettings:params right away
+      const device = this.devices.find(d => d.address === address);
+      const params = device?.attributes[DeviceSettings.ATTR_PARAMS];
+      if (!Array.isArray(params)) return;
+      const updated = params.flatMap(p => (typeof p === 'string' ? [] : [
+        p.paramId === call.args.paramId ? { ...p, value: Number(call.args.value) } : p,
+      ]));
+      await this.sendCommand(address, { [DeviceSettings.ATTR_PARAMS]: updated });
     }
   }
 

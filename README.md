@@ -40,6 +40,7 @@ Arcus Platform ──► Arcus MQTT Server ──► MQTT broker ◄── Home 
 | Shade | `cover` (shade) | Open/close and set position |
 | Vent | `cover` (damper), `binary_sensor`, `sensor` | Open/close and set position; obstruction; duct air pressure |
 | Siren | `siren` with the `sirens` [optional feature](#optional-features) | Sound and silence |
+| Device settings | `number`, `select` with the `device_settings` [optional feature](#optional-features) | Settings the Arcus driver lists, such as a dimmer's LED mode or ramp rate |
 | Temperature | `sensor` | Temperature reading |
 | Humidity | `sensor` | Humidity reading |
 | Battery | `sensor` | Battery percentage |
@@ -181,7 +182,7 @@ All configuration is via environment variables. The Home Assistant app offers th
 
 Some features are off unless you list them in `FEATURES`, comma-separated, such as `FEATURES=buzz_in,sirens`. In the app, enter the same list in the **FEATURES** option and restart the app.
 
-Turning a feature off stops its commands, but its entities stay in Home Assistant, doing nothing, until you delete them there (see **Removed devices** under [Notes](#notes)).
+Turning a feature off stops its commands, but its entities stay in Home Assistant, doing nothing, until you delete them there (see **Removed devices** under [Notes](#notes)). `device_settings` is the exception: its entities are removed when the server next starts.
 
 ### `buzz_in`: Buzz in
 
@@ -252,6 +253,14 @@ actions:
 
 Turning a siren off from Home Assistant silences it, even while the Arcus alarm is going off.
 
+### `device_settings`: Device settings
+
+Devices whose Arcus driver lists its settings get an entity for each one, under **Configuration** on the device's page. Many Zooz, Jasco and Minoston switches, dimmers and remotes have them, as does the Honeywell T6 Pro thermostat. A setting with a range of values, such as a ramp rate or an auto-off timer, is a number; one with a list of choices, such as the LED mode or what the device does after a power failure, is a select. Changing one sends it to the device through Arcus. Any MQTT login can change them.
+
+- Home Assistant shows the new value as soon as Arcus accepts it, before the device confirms it. A battery-powered device may only apply it when it next wakes up.
+- Home Assistant leaves configuration entities off the dashboards it builds, and HomeKit Bridge leaves them out unless you add them by name.
+- A setting a driver stops offering while the server is down stays in Home Assistant until you delete it there.
+
 ## Notes
 
 - **Alarm bypass notifications.** Arming with a door or window open arms around it (Arcus "arm bypassed"). The **Bypassed sensors** binary sensor on the *Arcus Security* device turns on when that happens, and its `bypassed_sensors` attribute lists the sensors. Trigger a notification automation on it turning on.
@@ -302,6 +311,7 @@ src/
     ├── shade.ts          # shade → cover
     ├── vent.ts           # vent → cover (damper), obstruction, pressure
     ├── siren.ts          # alert on sirens → siren (sirens)
+    ├── device-settings.ts # devsettings → number or select per setting (device_settings)
     └── irrigation.ts     # irrcont/irr → valve + watering time per zone
 ```
 

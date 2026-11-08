@@ -1,16 +1,35 @@
 /**
- * A single Arcus attribute value; lists are kept only when they hold strings (e.g. therm:supportedmodes),
- * and maps only when their values are strings (e.g. devadv:errors)
+ * One entry of devsettings:params: a setting the device's driver offers, such as a Z-Wave
+ * configuration parameter. Only paramId and type are checked when it arrives; the device
+ * settings mapper checks the rest (description, value, min, max, values) before using it.
  */
-export type ArcusAttributeValue = string | number | boolean | string[] | Record<string, string>;
+export interface DeviceSetting {
+  /** What devsettings:SetParam takes, e.g. "ledMode" */
+  paramId: string;
+  /** "range" (a number between min and max) or "enum" (one of values) */
+  type: string;
+  [field: string]: unknown;
+}
+
+/**
+ * A single Arcus attribute value; lists are kept only when they hold strings (e.g. therm:supportedmodes)
+ * or device settings (devsettings:params), and maps only when their values are strings (e.g. devadv:errors)
+ */
+export type ArcusAttributeValue = string | number | boolean | string[] | DeviceSetting[] | Record<string, string>;
 
 /** A key-value map of Arcus capability attributes, e.g. { "swit:state": "ON" } */
 export type ArcusAttributes = Record<string, ArcusAttributeValue>;
 
+function isDeviceSetting(value: unknown): value is DeviceSetting {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const { paramId, type } = value as Record<string, unknown>;
+  return typeof paramId === 'string' && typeof type === 'string';
+}
+
 /** Narrow a raw platform value to a supported attribute value */
 export function isAttributeValue(value: unknown): value is ArcusAttributeValue {
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return true;
-  if (Array.isArray(value)) return value.every(v => typeof v === 'string');
+  if (Array.isArray(value)) return value.every(v => typeof v === 'string') || value.every(isDeviceSetting);
   return typeof value === 'object' && value !== null && Object.values(value).every(v => typeof v === 'string');
 }
 

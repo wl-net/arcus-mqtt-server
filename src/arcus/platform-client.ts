@@ -238,7 +238,12 @@ export class PlatformArcusClient implements ArcusClient {
 
   async callMethod(address: string, call: ArcusMethodCall): Promise<void> {
     console.debug(`[PlatformClient] ${call.method} → ${address}:`, call.args);
-    throwIfErrorResponse(await this.sendCommandRequest(address, call.method, call.args), call.method);
+    const resp = throwIfErrorResponse(await this.sendCommandRequest(address, call.method, call.args), call.method);
+    // devsettings:SetParam refuses a setting or value with a status rather than an Error reply
+    const status = resp.payload?.attributes?.status;
+    if (typeof status === 'string' && status.startsWith('INVALID')) {
+      throw new Error(`${call.method} refused: ${status}`);
+    }
   }
 
   onDeviceEvent(handler: (address: string, attributes: ArcusAttributes) => void): void {
