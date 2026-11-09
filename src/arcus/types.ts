@@ -1,7 +1,8 @@
 /**
  * One entry of devsettings:params: a setting the device's driver offers, such as a Z-Wave
  * configuration parameter. Only paramId and type are checked when it arrives; the device
- * settings mapper checks the rest (description, value, min, max, values) before using it.
+ * settings mapper checks the rest (name, description, unit, value, min, max, values) before
+ * using it. name is a short label, or the paramId on platforms from before labels.
  */
 export interface DeviceSetting {
   /** What devsettings:SetParam takes, e.g. "ledMode" */

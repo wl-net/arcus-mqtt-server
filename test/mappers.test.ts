@@ -717,6 +717,58 @@ describe('device settings mapper (device_settings feature)', () => {
     assert.equal(deviceSettingsMapper.handleCommand(settingsOn, keypad(), 'setting_chimeVolume', '8'), null);
   });
 
+  describe('from a platform that sends labels', () => {
+    const dimmer = () => makeDevice('DRIV:dev:dim1', ['dev', 'devsettings'], { 'devsettings:params': [
+      {
+        paramId: 'rampRateOn', name: 'Paddle ramp rate on', unit: 's', type: 'range', min: 0, max: 99, value: 2,
+        description: 'Parameter 9: Physical ramp rate control ON (seconds, 0=instant)',
+      },
+      {
+        paramId: 'zwaveRampRateOn', name: 'Z-Wave ramp rate on', type: 'range', min: 0, max: 255, value: 255,
+        description: 'Parameter 28: Z-Wave ramp rate ON (0-99=seconds, 255=match physical)',
+      },
+      {
+        paramId: 'ledMode', name: 'LED indicator', unit: 's', type: 'enum', values: { '0': 'Off', '1': 'On' }, value: 1,
+        description: 'Parameter 2: LED indicator control',
+      },
+      // An unlabelled setting still sends its paramId as name
+      { paramId: 'nightLight', name: 'nightLight', type: 'range', min: 0, max: 99, value: 20, description: 'Parameter 22: Night light brightness (%)' },
+      { paramId: 'bare', name: 'Bare', type: 'range', min: 0, max: 1, value: 0 },
+    ] });
+
+    it('names each setting with its label, and takes its unit as sent', () => {
+      const configs = byId(dimmer());
+      const payload = (id: string) => configs.get(`dim1_setting_${id}`)!.payload;
+      assert.equal(payload('rampRateOn').name, 'Paddle ramp rate on');
+      assert.equal(payload('rampRateOn').unit_of_measurement, 's');
+      // No unit sent, so none, whatever the description says
+      assert.equal(payload('zwaveRampRateOn').name, 'Z-Wave ramp rate on');
+      assert.equal(payload('zwaveRampRateOn').unit_of_measurement, undefined);
+      assert.equal(payload('ledMode').name, 'LED indicator');
+      assert.equal(payload('ledMode').unit_of_measurement, undefined);
+      // Without a label, the name and unit come from the description as before
+      assert.equal(payload('nightLight').name, 'Night light brightness');
+      assert.equal(payload('nightLight').unit_of_measurement, '%');
+    });
+
+    it('gives each setting its description as an attribute', () => {
+      const configs = byId(dimmer());
+      const rendered = (id: string) => {
+        const payload = configs.get(`dim1_setting_${id}`)!.payload;
+        assert.equal(payload.json_attributes_topic, 'arcus/dim1/state');
+        // What Jinja renders: everything inside the raw block, as it is
+        const template = String(payload.json_attributes_template);
+        const match = /^\{% raw %\}(.*)\{% endraw %\}$/.exec(template);
+        assert.ok(match, template);
+        assert.ok(!match[1].includes('%'), `a % inside the raw block could end it: ${template}`);
+        return JSON.parse(match[1]) as Record<string, unknown>;
+      };
+      assert.deepEqual(rendered('rampRateOn'), { description: 'Parameter 9: Physical ramp rate control ON (seconds, 0=instant)' });
+      assert.deepEqual(rendered('nightLight'), { description: 'Parameter 22: Night light brightness (%)' });
+      assert.equal(configs.get('dim1_setting_bare')!.payload.json_attributes_template, undefined);
+    });
+  });
+
   it('offers nothing for a device without settings', () => {
     const bare = makeDevice('DRIV:dev:kp1', ['dev', 'devsettings']);
     assert.deepEqual(deviceSettingsMapper.buildDiscovery(settingsOn, bare), []);

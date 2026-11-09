@@ -1,4 +1,4 @@
-import type { ArcusDevice, ArcusAttributes, ArcusMethodCall } from '../arcus/types.js';
+import type { ArcusDevice, ArcusAttributes, ArcusMethodCall, DeviceSetting } from '../arcus/types.js';
 import { DeviceSettings } from '../arcus/capabilities.js';
 import type { Config } from '../config.js';
 import { Features, hasFeature } from '../config.js';
@@ -19,6 +19,8 @@ interface SettingBase {
   /** The paramId made safe for topics, IDs and templates */
   key: string;
   name: string;
+  /** The driver's description, which says what special values such as 0 mean; may be empty */
+  description: string;
   /** The driver's last known value, or null if it has none */
   value: number | null;
 }
@@ -69,8 +71,23 @@ function entityOf(setting: Setting): string {
   return `setting_${setting.key}`;
 }
 
+/** Text from a param field, trimmed, or undefined if it's missing or blank */
+function text(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+/**
+ * Name for HA, and the unit for a number. Platforms with setting labels send the label as name,
+ * and the unit separately. Older ones send the paramId as name, so both come from the description.
+ */
+function nameAndUnit(param: DeviceSetting, withUnit: boolean): { name: string; unit?: string } {
+  const label = text(param.name);
+  if (label && label !== param.paramId) return { name: label, unit: withUnit ? text(param.unit) : undefined };
+  return describedName(param.description, param.paramId, withUnit);
+}
+
 /** Name for HA, and the unit when the description ends with one (only numbers have units) */
-function nameAndUnit(description: unknown, paramId: string, withUnit: boolean): { name: string; unit?: string } {
+function describedName(description: unknown, paramId: string, withUnit: boolean): { name: string; unit?: string } {
   let name = typeof description === 'string' ? description.replace(PARAM_NUMBER, '').trim() : '';
   let unit: string | undefined;
   const match = withUnit ? TRAILING_UNIT.exec(name) : null;
@@ -110,20 +127,32 @@ function readSettings(device: ArcusDevice): Setting[] {
     const key = settingKey(paramId);
     if (!key || keys.has(key)) continue;
     const value = isNumber(param.value) ? param.value : null;
+    const description = text(param.description) ?? '';
 
     if (param.type === 'range' && isNumber(param.min) && isNumber(param.max) && param.min <= param.max) {
-      const { name, unit } = nameAndUnit(param.description, paramId, true);
-      settings.push({ kind: 'number', paramId, key, name, value, min: param.min, max: param.max, unit });
+      const { name, unit } = nameAndUnit(param, true);
+      settings.push({ kind: 'number', paramId, key, name, description, value, min: param.min, max: param.max, unit });
     } else if (param.type === 'enum') {
       const options = enumOptions(param.values);
       if (options.length === 0) continue;
-      settings.push({ kind: 'select', paramId, key, name: nameAndUnit(param.description, paramId, false).name, value, options });
+      settings.push({ kind: 'select', paramId, key, name: nameAndUnit(param, false).name, description, value, options });
     } else {
       continue;
     }
     keys.add(key);
   }
   return settings;
+}
+
+/**
+ * HA's attributes for a setting: its description, which a name alone can't hold (e.g. "0=disabled").
+ * The template ignores the state message and always gives the same JSON. It's wrapped in a raw
+ * block so Jinja copies it as it is, and every % is written as \u0025, so a description can't
+ * end that block with "{% endraw %}".
+ */
+function attributesTemplate(description: string): string {
+  const json = JSON.stringify({ description }).replace(/%/g, '\\u0025');
+  return `{% raw %}${json}{% endraw %}`;
 }
 
 function objectIdOf(device: ArcusDevice, setting: Setting): string {
@@ -153,8 +182,10 @@ function commandValue(setting: Setting, payload: string): string | null {
 /**
  * Maps device settings (devsettings:params, such as a dimmer's LED mode or a keypad's
  * volume) → an HA config entity each, with the device_settings feature on: a number for a
- * range, a select for an enum. Changing one calls devsettings:SetParam; the driver reports
- * the new value right away, and again once the device confirms it.
+ * range, a select for an enum. Each is named with the driver's label when the platform sends
+ * one, and has the driver's description as an attribute. Changing one calls
+ * devsettings:SetParam; the driver reports the new value right away, and again once the
+ * device confirms it.
  */
 export const deviceSettingsMapper: Mapper = {
   matches(device: ArcusDevice): boolean {
@@ -174,6 +205,10 @@ export const deviceSettingsMapper: Mapper = {
         value_template: `{{ value_json.${entity} }}`,
         command_topic: commandTopic(config, device.address, entity),
         entity_category: 'config',
+        ...(setting.description ? {
+          json_attributes_topic: stateTopic(config, device.address),
+          json_attributes_template: attributesTemplate(setting.description),
+        } : {}),
         device: buildDeviceInfo(config, device),
         ...buildAvailability(config, device),
       };

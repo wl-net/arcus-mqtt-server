@@ -188,7 +188,7 @@ class HaSocket {
 
 interface RegistryEntry { entity_id: string; platform: string; unique_id: string }
 interface LogEntry { name: string; message: string[]; level: string; source: [string, number]; count: number }
-interface HaState { entity_id: string; state: string }
+interface HaState { entity_id: string; state: string; attributes?: Record<string, unknown> }
 
 describe('Home Assistant', { skip: !process.env.TEST_HA, timeout: 20 * 60_000 }, () => {
   let haUrl = '';
@@ -366,6 +366,19 @@ describe('Home Assistant', { skip: !process.env.TEST_HA, timeout: 20 * 60_000 },
 
     const brightness = `${PLACES[0].prefix}/dimmer-001/light_brightness/set`;
     assert.deepEqual(sent, [brightness, brightness]);
+  });
+
+  it('names device settings with their labels and gives them their descriptions', () => {
+    const attributes = (uniqueId: string) => {
+      const entityId = registry.find(e => e.unique_id === uniqueId)?.entity_id;
+      return states.find(s => s.entity_id === entityId)?.attributes ?? {};
+    };
+    const ramp = attributes('dimmer-001_setting_rampRate');
+    assert.equal(ramp.friendly_name, 'Dining Room Light Ramp rate');
+    assert.equal(ramp.unit_of_measurement, 's');
+    assert.equal(ramp.description, 'Parameter 9: Ramp rate (seconds)');
+    // No label, so named from the description
+    assert.equal(attributes('dimmer-001_setting_autoOffTimer').friendly_name, 'Dining Room Light Auto turn-off timer (0=disabled, 1-65535=minutes)');
   });
 
   // The mock client changes devsettings:params the way the drivers do, so HA showing the new

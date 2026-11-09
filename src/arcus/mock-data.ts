@@ -86,10 +86,10 @@ function buildMockDevices(): ArcusDevice[] {
         [Dimmer.ATTR_BRIGHTNESS]: 75,
         [DevicePower.ATTR_SOURCE]: DevicePower.SOURCE_LINE,
         [Device.ATTR_DEVTYPEHINT]: 'Dimmer',
-        // Shaped like the drivers' devsettings:params
+        // Shaped like the drivers' devsettings:params; autoOffTimer has no label, as on platforms from before labels
         [DeviceSettings.ATTR_PARAMS]: [
           {
-            paramId: 'ledMode', name: 'ledMode', type: 'enum', description: 'Parameter 2: LED indicator',
+            paramId: 'ledMode', name: 'LED indicator', type: 'enum', description: 'Parameter 2: LED indicator',
             values: { '0': 'On when off', '1': 'On when on', '2': 'Always off', '3': 'Always on' },
             dflt: 0, value: 0, zwaveParamNo: 2, zwaveParamSize: 1,
           },
@@ -99,12 +99,12 @@ function buildMockDevices(): ArcusDevice[] {
             min: 0, max: 65535, dflt: 0, value: 0, zwaveParamNo: 3, zwaveParamSize: 4,
           },
           {
-            paramId: 'powerRestore', name: 'powerRestore', type: 'enum', description: 'Parameter 8: State after a power failure',
+            paramId: 'powerRestore', name: 'State after power failure', type: 'enum', description: 'Parameter 8: State after a power failure',
             values: { '0': 'Off', '1': 'On', '2': 'Last state' },
             dflt: 2, value: 2, zwaveParamNo: 8, zwaveParamSize: 1,
           },
           {
-            paramId: 'rampRate', name: 'rampRate', type: 'range', description: 'Parameter 9: Ramp rate (seconds)',
+            paramId: 'rampRate', name: 'Ramp rate', unit: 's', type: 'range', description: 'Parameter 9: Ramp rate (seconds)',
             min: 0, max: 99, dflt: 1, value: 1, zwaveParamNo: 9, zwaveParamSize: 1,
           },
         ],
