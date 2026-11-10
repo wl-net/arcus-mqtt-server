@@ -1,4 +1,4 @@
-import type { ArcusDevice, ArcusAttributes, ArcusMethodCall, AlarmState, PersonInfo, SceneInfo } from './types.js';
+import type { ArcusDevice, ArcusAttributes, ArcusMethodCall, AlarmState, DeviceSetting, PersonInfo, SceneInfo } from './types.js';
 import { DeviceSettings, DoorLock, IrrigationController, IrrigationZone } from './capabilities.js';
 import { createMockDevices, createMockHub, createMockPeople } from './mock-data.js';
 
@@ -14,6 +14,12 @@ export interface ArcusClient {
 
   /** Call a capability method on a device, for commands that aren't attribute changes */
   callMethod(address: string, call: ArcusMethodCall): Promise<void>;
+
+  /**
+   * A device's settings as its driver describes them now. The devsettings:params that
+   * listDevices returns is the copy the driver last saved, which can be older.
+   */
+  getDeviceSettings(address: string): Promise<DeviceSetting[]>;
 
   /** Start listening for real-time device events */
   connect(): Promise<void>;
@@ -102,6 +108,12 @@ export class MockArcusClient implements ArcusClient {
     for (const handler of this.eventHandlers) {
       handler(address, attributes);
     }
+  }
+
+  async getDeviceSettings(address: string): Promise<DeviceSetting[]> {
+    // The mock saves every change, so its saved settings are always the driver's
+    const params = this.devices.find(d => d.address === address)?.attributes[DeviceSettings.ATTR_PARAMS];
+    return Array.isArray(params) ? params as DeviceSetting[] : [];
   }
 
   async callMethod(address: string, call: ArcusMethodCall): Promise<void> {

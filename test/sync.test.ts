@@ -2,7 +2,7 @@ import { describe, it, before, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { startSync } from '../src/sync.js';
 import type { ArcusClient } from '../src/arcus/client.js';
-import type { ArcusDevice, ArcusAttributes, ArcusMethodCall, AlarmState, PersonInfo, SceneInfo } from '../src/arcus/types.js';
+import type { ArcusDevice, ArcusAttributes, ArcusMethodCall, AlarmState, DeviceSetting, PersonInfo, SceneInfo } from '../src/arcus/types.js';
 import type { Config } from '../src/config.js';
 import { FakeMqtt, delay, makeDevice, testConfig, until, quietConsole } from './helpers.js';
 
@@ -39,6 +39,16 @@ class FakeClient implements ArcusClient {
   readonly methodCalls: Array<{ address: string; call: ArcusMethodCall }> = [];
   async callMethod(address: string, call: ArcusMethodCall): Promise<void> {
     this.methodCalls.push({ address, call });
+  }
+  /** What the driver describes now, by address; a device not here has its listed settings */
+  readonly driverSettings = new Map<string, DeviceSetting[]>();
+  readonly getDeviceSettingsCalls: string[] = [];
+  failGetDeviceSettings = false;
+  async getDeviceSettings(address: string): Promise<DeviceSetting[]> {
+    this.getDeviceSettingsCalls.push(address);
+    if (this.failGetDeviceSettings) throw new Error('getDeviceSettings failed');
+    const listed = this.devices.find(d => d.address === address)?.attributes['devsettings:params'];
+    return this.driverSettings.get(address) ?? (listed as DeviceSetting[] | undefined) ?? [];
   }
   onDeviceEvent(handler: (address: string, attributes: ArcusAttributes) => void): void {
     this.deviceHandlers.push(handler);
@@ -280,15 +290,21 @@ describe('sync', () => {
 
   describe('device settings (device_settings feature)', () => {
     const params = (rampRate: number) => [
-      { paramId: 'rampRate', type: 'range', description: 'Parameter 9: Ramp rate (seconds)', min: 0, max: 99, value: rampRate },
+      { paramId: 'rampRate', type: 'range', description: 'Parameter 9: Ramp rate (seconds)', min: 0, max: 99, value: rampRate, zwaveParamNo: 9, zwaveParamSize: 1 },
     ];
+    /** The same settings from a driver that labels them, with a driver-only one first */
+    const labelled = (rampRate: number) => [
+      { paramId: 'chime', type: 'enum', name: 'Chime', description: 'Sound played on entry', values: { '0': 'Off', '1': 'On' }, value: 0 },
+      { ...params(rampRate)[0], name: 'Dimming speed', unit: 's' },
+    ];
+    const settingsOn: Partial<Config> = { features: new Set(['device_settings']) };
     const dimmer = (rampRate = 1) => makeDevice('DRIV:dev:dim-1', ['dev', 'swit', 'dim', 'devsettings'], {
       'swit:state': 'ON', 'dim:brightness': 50, 'devsettings:params': params(rampRate),
     }, 'Dimmer');
     const topic = 'homeassistant/number/arcus/dim-1_setting_rampRate/config';
 
     it('changes a setting from HA, and shows the value the driver reports', async () => {
-      const { broker, client } = await start(c => { c.devices = [dimmer()]; }, { features: new Set(['device_settings']) });
+      const { broker, client } = await start(c => { c.devices = [dimmer()]; }, settingsOn);
       assert.ok(broker.retained.has(topic));
       assert.equal(broker.json('arcus/dim-1/state').setting_rampRate, 1);
 
@@ -301,6 +317,53 @@ describe('sync', () => {
       assert.equal(broker.json('arcus/dim-1/state').setting_rampRate, 5);
     });
 
+    it('asks a device whose saved settings are out of date to report one, and renames them as soon as it does', async () => {
+      const { broker, client } = await start(c => {
+        c.devices = [dimmer()];
+        c.driverSettings.set('DRIV:dev:dim-1', labelled(1));
+      }, settingsOn);
+      await until(() => client.methodCalls.length > 0, 2000, 'the setting read');
+      // The first Z-Wave setting, not the driver-only one before it
+      assert.deepEqual(client.methodCalls, [
+        { address: 'DRIV:dev:dim-1', call: { method: 'devsettings:GetParam', args: { paramId: 'rampRate' } } },
+      ]);
+      assert.equal(broker.json(topic).name, 'Ramp rate');
+
+      // The device reports the setting, and the driver saves the whole list again
+      client.devices = [makeDevice('DRIV:dev:dim-1', ['dev', 'swit', 'dim', 'devsettings'], {
+        'swit:state': 'ON', 'dim:brightness': 50, 'devsettings:params': labelled(1),
+      }, 'Dimmer')];
+      client.emitDevice('DRIV:dev:dim-1', { 'devsettings:params': labelled(1) });
+      assert.equal(broker.json(topic).name, 'Dimming speed');
+      assert.ok(broker.retained.has('homeassistant/select/arcus/dim-1_setting_chime/config'));
+    });
+
+    it('leaves a device with current saved settings alone, and checks each device once a run', async () => {
+      const { broker, client } = await start(c => {
+        c.devices = [dimmer()];
+        // Only the value differs, which the device reports without the list going out of date
+        c.driverSettings.set('DRIV:dev:dim-1', params(7));
+      }, settingsOn);
+      await until(() => client.getDeviceSettingsCalls.length > 0, 2000, 'the settings check');
+      await resync(broker, client);
+      await delay(20);
+      assert.deepEqual(client.getDeviceSettingsCalls, ['DRIV:dev:dim-1']);
+      assert.deepEqual(client.methodCalls, []);
+    });
+
+    it('checks the settings again at the next sync when the check fails', async () => {
+      const { broker, client } = await start(c => {
+        c.devices = [dimmer()];
+        c.driverSettings.set('DRIV:dev:dim-1', labelled(1));
+        c.failGetDeviceSettings = true;
+      }, settingsOn);
+      await until(() => client.getDeviceSettingsCalls.length > 0, 2000, 'the first check');
+      client.failGetDeviceSettings = false;
+      await resync(broker, client);
+      await until(() => client.methodCalls.length > 0, 2000, 'the setting read');
+      assert.equal(client.getDeviceSettingsCalls.length, 2);
+    });
+
     it('removes the setting entities once the feature is off, even after a restart', async () => {
       const broker = new FakeMqtt();
       broker.publish(topic, '{}', true);
@@ -311,6 +374,7 @@ describe('sync', () => {
       assert.equal(broker.json('arcus/dim-1/state').setting_rampRate, undefined);
       broker.deliver('arcus/dim-1/setting_rampRate/set', '5');
       assert.deepEqual(client.methodCalls, []);
+      assert.deepEqual(client.getDeviceSettingsCalls, [], 'checked the saved settings');
     });
   });
 

@@ -56,6 +56,26 @@ describe('PlatformArcusClient', () => {
       assert.equal('swit:state' in device.attributes, false, 'kept an attribute from a capability the device lacks');
     });
 
+    it("reads a device's settings from its driver, rather than the saved copy", async () => {
+      const params = [{ paramId: 'rampRate', type: 'range', name: 'Ramp rate', unit: 's', min: 0, max: 99, value: 3 }];
+      const { server, client } = await connect((req) => req.messageType === 'base:GetAttributes'
+        ? { messageType: 'base:GetAttributesResponse', attributes: { 'devsettings:params': params } }
+        : undefined);
+      await client.connect();
+      assert.deepEqual(await client.getDeviceSettings('DRIV:dev:d1'), params);
+      const [req] = server.requestsOf('base:GetAttributes');
+      assert.equal(req.destination, 'DRIV:dev:d1');
+      assert.deepEqual(req.attributes, { namespaces: ['devsettings:params'] });
+    });
+
+    it('throws when a device returns no settings list', async () => {
+      const { client } = await connect((req) => req.messageType === 'base:GetAttributes'
+        ? { messageType: 'base:GetAttributesResponse', attributes: { 'devsettings:params': ['not', 'settings'] } }
+        : undefined);
+      await client.connect();
+      await assert.rejects(client.getDeviceSettings('DRIV:dev:d1'), /returned no device settings/);
+    });
+
     it('keeps attributes of capability instances, such as the buttons on a remote', async () => {
       const { client } = await connect((req) => req.messageType === 'place:ListDevices'
         ? { messageType: 'place:ListDevicesResponse', attributes: { devices: [{

@@ -21,7 +21,8 @@ export type ArcusAttributeValue = string | number | boolean | string[] | DeviceS
 /** A key-value map of Arcus capability attributes, e.g. { "swit:state": "ON" } */
 export type ArcusAttributes = Record<string, ArcusAttributeValue>;
 
-function isDeviceSetting(value: unknown): value is DeviceSetting {
+/** An entry of devsettings:params, checked only as far as DeviceSetting says */
+export function isDeviceSetting(value: unknown): value is DeviceSetting {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const { paramId, type } = value as Record<string, unknown>;
   return typeof paramId === 'string' && typeof type === 'string';
