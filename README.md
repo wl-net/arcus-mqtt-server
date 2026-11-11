@@ -132,6 +132,16 @@ ARCUS_API_KEY=your-api-key \
 npm start
 ```
 
+An API key can only do what its permissions allow, and they can't be changed once it's made. Each permission is a capability namespace, then `r` (read), `w` (change attributes) or `x` (call methods), then `*` or an ID. The server needs `*:r:*` and `place:x` to read the place and its devices, `w` for each kind of device it controls (`swit:w:*`, `dim:w:*`, `therm:w:*` and so on), `subalarm:x` and `scene:x` for the alarm and scenes, `irrcont:x:*` for irrigation, and for the optional features:
+
+| Feature | Permission |
+|---|---|
+| `device_settings` | `devsettings:x:*` |
+| `buzz_in`, `lock_access` | `doorlock:x:*` |
+| `sirens` | `alert:w:*` |
+
+When Arcus refuses a command, the log names the permission the key is missing.
+
 ### Client-Bridge Mode
 
 Connects directly to the Arcus platform using user credentials. Requires a place ID.
@@ -258,7 +268,8 @@ Turning a siren off from Home Assistant silences it, even while the Arcus alarm 
 Devices whose Arcus driver lists its settings get an entity for each one, under **Configuration** on the device's page. Many Zooz, Jasco and Minoston switches, dimmers and remotes have them, as does the Honeywell T6 Pro thermostat. A setting with a range of values, such as a ramp rate or an auto-off timer, is a number; one with a list of choices, such as the LED mode or what the device does after a power failure, is a select. Changing one sends it to the device through Arcus. Any MQTT login can change them.
 
 - Each setting is named with the short label its Arcus driver gives it, on a platform that sends labels, and from the driver's description otherwise. The full description, which says what values such as 0 mean, is the entity's `description` attribute.
-- After an Arcus driver update, such as the one that added labels, Arcus keeps a device's old setting names and descriptions until the device next reports a setting. Each time the server starts, it compares every device's saved settings with what its driver describes, and asks a device whose copy is out of date to report one setting, as reading a setting in Oculus does. Arcus then saves the current ones, and Home Assistant renames the entities. A device whose copy is current gets no traffic, and a battery-powered device answers when it next wakes up.
+- After an Arcus driver update changes a setting's label or description, Home Assistant renames the entity once Arcus saves the new settings for that device: at the device's next event on a platform that rebuilds them when the driver starts, otherwise when the device next reconnects or reports a setting.
+- In api-server mode, the API key needs `devsettings:x:*` to change settings (see [API-Server Mode](#api-server-mode)).
 - Home Assistant shows the new value as soon as Arcus accepts it, before the device confirms it. A battery-powered device may only apply it when it next wakes up.
 - Home Assistant leaves configuration entities off the dashboards it builds, and HomeKit Bridge leaves them out unless you add them by name.
 - A setting a driver stops offering while the server is down stays in Home Assistant until you delete it there.
@@ -283,7 +294,6 @@ src/
 ├── config.ts             # Environment variable config, Home Assistant app options
 ├── mqtt.ts               # MQTT client, finding the broker
 ├── sync.ts               # Sync loop (polling + events)
-├── settings-refresh.ts   # Has Arcus save out-of-date device settings again (device_settings)
 ├── arcus/
 │   ├── types.ts          # ArcusDevice, ArcusClient interface
 │   ├── capabilities.ts   # Arcus capability constants

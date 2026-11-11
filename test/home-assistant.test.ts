@@ -186,7 +186,7 @@ class HaSocket {
   }
 }
 
-interface RegistryEntry { entity_id: string; platform: string; unique_id: string }
+interface RegistryEntry { entity_id: string; platform: string; unique_id: string; original_name?: string | null }
 interface LogEntry { name: string; message: string[]; level: string; source: [string, number]; count: number }
 interface HaState { entity_id: string; state: string; attributes?: Record<string, unknown> }
 
@@ -379,6 +379,32 @@ describe('Home Assistant', { skip: !process.env.TEST_HA, timeout: 20 * 60_000 },
     assert.equal(ramp.description, 'Parameter 9: Ramp rate (seconds)');
     // No label, so named from the description
     assert.equal(attributes('dimmer-001_setting_autoOffTimer').friendly_name, 'Dining Room Light Auto turn-off timer (0=disabled, 1-65535=minutes)');
+  });
+
+  // A driver update can give a setting a label after HA has created its entity; the bridge then
+  // republishes the discovery config with the new name
+  it('renames a device setting when its discovery name changes', async () => {
+    const uniqueId = 'dimmer-001_setting_autoOffTimer';
+    const topic = `homeassistant/number/${PLACES[0].prefix}/${uniqueId}/config`;
+    const config = JSON.parse(onBroker.get(topic) ?? 'null') as Record<string, unknown> | null;
+    assert.ok(config, `nothing retained on ${topic}`);
+    const entityId = registry.find(e => e.unique_id === uniqueId)?.entity_id;
+    assert.ok(entityId, 'no entity for the auto-off timer');
+
+    const client = await connectAsync(brokerUrl);
+    await client.publishAsync(topic, JSON.stringify({ ...config, name: 'Auto-off timer' }), { retain: true });
+    await client.endAsync();
+
+    let friendlyName: unknown;
+    await waitFor(async () => {
+      const state = (await socket.call<HaState[]>('get_states')).find(s => s.entity_id === entityId);
+      friendlyName = state?.attributes?.friendly_name;
+      return friendlyName === 'Dining Room Light Auto-off timer';
+    }, 15_000, 'the new name in the state').catch(() => undefined);
+    const entry = (await mqttEntities()).find(e => e.unique_id === uniqueId);
+    log(`after the rename: friendly_name=${JSON.stringify(friendlyName)} original_name=${JSON.stringify(entry?.original_name)}`);
+    assert.equal(friendlyName, 'Dining Room Light Auto-off timer');
+    assert.equal(entry?.original_name, 'Auto-off timer');
   });
 
   // The mock client changes devsettings:params the way the drivers do, so HA showing the new

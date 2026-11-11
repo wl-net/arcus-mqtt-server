@@ -21,8 +21,7 @@ export type ArcusAttributeValue = string | number | boolean | string[] | DeviceS
 /** A key-value map of Arcus capability attributes, e.g. { "swit:state": "ON" } */
 export type ArcusAttributes = Record<string, ArcusAttributeValue>;
 
-/** An entry of devsettings:params, checked only as far as DeviceSetting says */
-export function isDeviceSetting(value: unknown): value is DeviceSetting {
+function isDeviceSetting(value: unknown): value is DeviceSetting {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const { paramId, type } = value as Record<string, unknown>;
   return typeof paramId === 'string' && typeof type === 'string';
@@ -33,6 +32,20 @@ export function isAttributeValue(value: unknown): value is ArcusAttributeValue {
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return true;
   if (Array.isArray(value)) return value.every(v => typeof v === 'string') || value.every(isDeviceSetting);
   return typeof value === 'object' && value !== null && Object.values(value).every(v => typeof v === 'string');
+}
+
+/**
+ * An Error reply from Arcus to a request, as opposed to no reply at all. Its code says why,
+ * e.g. error.unauthorized when the login or API key lacks the permission the request needs.
+ */
+export class ArcusErrorReply extends Error {
+  readonly code: string | undefined;
+
+  constructor(request: string, attributes: Record<string, unknown>) {
+    super(`${request} failed: ${JSON.stringify(attributes)}`);
+    this.name = 'ArcusErrorReply';
+    this.code = typeof attributes.code === 'string' ? attributes.code : undefined;
+  }
 }
 
 /** A capability method call on a device, e.g. irrcont:WaterNowV2 with { zone: 'z1', duration: 10 } */

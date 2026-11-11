@@ -12,7 +12,6 @@ import { setupCommandHandler } from './ha/command.js';
 import { publishAlarmDiscovery, publishAlarmState, publishAlarmAvailability, setupAlarmCommandHandler } from './ha/alarm.js';
 import { publishSceneDiscovery, publishSceneFired, setupSceneCommandHandler } from './ha/scenes.js';
 import { publishLockAccessDiscovery } from './ha/lock-access.js';
-import { refreshStaleSettings } from './settings-refresh.js';
 
 /** Protocols whose devices pair through the hub (others, e.g. IPCD Wi-Fi devices, talk to the platform directly) */
 const HUB_PROTOCOLS = new Set(['ZIGB', 'ZWAV']);
@@ -156,30 +155,6 @@ export async function startSync(
   // Entities stay unavailable until the first sync succeeds
   publishBridgeAvailability(mqtt, config, false);
 
-  /** Devices whose saved settings this run has checked, or is checking */
-  const settingsChecked = new Set<string>();
-
-  /**
-   * Check each device's saved settings once a run, the first time a sync lists it (see
-   * refreshStaleSettings). One device at a time, so a restart doesn't burst Z-Wave traffic.
-   */
-  const checkSettings = async (): Promise<void> => {
-    if (!hasFeature(config, Features.DEVICE_SETTINGS)) return;
-    for (const device of [...devices.values()]) {
-      if (!device.caps.has(DeviceSettings.NAMESPACE) || settingsChecked.has(device.address)) continue;
-      settingsChecked.add(device.address);
-      try {
-        if (await refreshStaleSettings(client, device)) {
-          console.log(`[Sync] ${device.name} (${device.address}) has out-of-date settings in Arcus; asked it to report one so they're saved again`);
-        }
-      } catch (err) {
-        // Most likely the connection dropped; the next sync tries again
-        settingsChecked.delete(device.address);
-        console.warn(`[Sync] Couldn't check the settings of ${device.name} (${device.address}):`, err);
-      }
-    }
-  };
-
   // Only one full sync runs at a time. A request that arrives mid-sync (e.g. a
   // reconnect during a poll) shares the running sync and makes it run once more.
   let syncing: Promise<void> | null = null;
@@ -200,7 +175,6 @@ export async function startSync(
             await fullSync(mqtt, config, client, devices, scenes, people, { firstSync: !synced, changes: changesDuringSync });
             synced = true;
             if (connected) publishBridgeAvailability(mqtt, config, true);
-            void checkSettings();
           } catch (err) {
             // A sync requested meanwhile (typically a reconnect) supersedes this failure
             if (!rerun) throw err;

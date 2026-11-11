@@ -1,9 +1,20 @@
 import type { Mqtt } from '../mqtt.js';
 import type { ArcusClient } from '../arcus/client.js';
 import type { ArcusDevice } from '../arcus/types.js';
+import { ArcusErrorReply } from '../arcus/types.js';
 import type { Config } from '../config.js';
 import { matchingMappers } from '../mappers/index.js';
 import { deviceId } from './topics.js';
+
+/**
+ * For a request Arcus refused as unauthorized, what an API key needs to send it, e.g.
+ * " (in api-server mode, the API key needs devsettings:x:*)"; empty for any other failure.
+ * A permission is a namespace, then r, w or x (read, write attributes, call methods), then *.
+ */
+function permissionHint(err: unknown, permissions: string[]): string {
+  if (!(err instanceof ArcusErrorReply) || err.code !== 'error.unauthorized') return '';
+  return ` (in api-server mode, the API key needs ${[...new Set(permissions)].join(' and ')})`;
+}
 
 /**
  * Set up command handling: subscribe to command topics and route to mappers.
@@ -33,7 +44,8 @@ export function setupCommandHandler(
       if (attrs) {
         console.log(`[Command] ${device.address} ${entity} ← ${payload}`);
         client.sendCommand(device.address, attrs).catch(err => {
-          console.error(`[Command] Failed to send command to ${device.address}:`, err);
+          const needs = Object.keys(attrs).map(name => `${name.split(':')[0]}:w:*`);
+          console.error(`[Command] Failed to send command to ${device.address}${permissionHint(err, needs)}:`, err);
         });
         return;
       }
@@ -41,7 +53,8 @@ export function setupCommandHandler(
       if (call) {
         console.log(`[Command] ${device.address} ${entity} ← ${payload}`);
         client.callMethod(device.address, call).catch(err => {
-          console.error(`[Command] ${call.method} failed on ${device.address}:`, err);
+          const needs = [`${call.method.split(':')[0]}:x:*`];
+          console.error(`[Command] ${call.method} failed on ${device.address}${permissionHint(err, needs)}:`, err);
         });
         return;
       }

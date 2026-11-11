@@ -2,6 +2,7 @@ import { describe, it, before, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { PlatformArcusClient } from '../src/arcus/platform-client.js';
 import type { ArcusAttributes } from '../src/arcus/types.js';
+import { ArcusErrorReply } from '../src/arcus/types.js';
 import { FakeArcusServer, OK, testConfig, until, quietConsole, type ArcusRequest } from './helpers.js';
 
 type Reply = { messageType: string; attributes: Record<string, unknown> };
@@ -54,26 +55,6 @@ describe('PlatformArcusClient', () => {
       assert.equal('devadv:protocolAttrs' in device.attributes, false, 'kept a non-string map');
       assert.deepEqual(device.attributes['devsettings:params'], [{ paramId: 'ledMode', type: 'enum', values: { '0': 'Off', '1': 'On' }, value: 1 }]);
       assert.equal('swit:state' in device.attributes, false, 'kept an attribute from a capability the device lacks');
-    });
-
-    it("reads a device's settings from its driver, rather than the saved copy", async () => {
-      const params = [{ paramId: 'rampRate', type: 'range', name: 'Ramp rate', unit: 's', min: 0, max: 99, value: 3 }];
-      const { server, client } = await connect((req) => req.messageType === 'base:GetAttributes'
-        ? { messageType: 'base:GetAttributesResponse', attributes: { 'devsettings:params': params } }
-        : undefined);
-      await client.connect();
-      assert.deepEqual(await client.getDeviceSettings('DRIV:dev:d1'), params);
-      const [req] = server.requestsOf('base:GetAttributes');
-      assert.equal(req.destination, 'DRIV:dev:d1');
-      assert.deepEqual(req.attributes, { namespaces: ['devsettings:params'] });
-    });
-
-    it('throws when a device returns no settings list', async () => {
-      const { client } = await connect((req) => req.messageType === 'base:GetAttributes'
-        ? { messageType: 'base:GetAttributesResponse', attributes: { 'devsettings:params': ['not', 'settings'] } }
-        : undefined);
-      await client.connect();
-      await assert.rejects(client.getDeviceSettings('DRIV:dev:d1'), /returned no device settings/);
     });
 
     it('keeps attributes of capability instances, such as the buttons on a remote', async () => {
@@ -241,7 +222,8 @@ describe('PlatformArcusClient', () => {
     it('rejects a refused device command', async () => {
       const { client } = await connect((req) => (req.messageType === 'base:SetAttributes' ? refused : undefined));
       await client.connect();
-      await assert.rejects(client.sendCommand('DRIV:dev:l1', { 'doorlock:lockstate': 'UNLOCKED' }), /base:SetAttributes failed/);
+      await assert.rejects(client.sendCommand('DRIV:dev:l1', { 'doorlock:lockstate': 'UNLOCKED' }), (err: unknown) =>
+        err instanceof ArcusErrorReply && err.code === 'request.refused' && /base:SetAttributes failed/.test(err.message));
     });
 
     it('rejects a device setting the driver refuses, and accepts one it will send', async () => {

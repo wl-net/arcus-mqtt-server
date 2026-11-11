@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
+import { ArcusErrorReply } from './types.js';
 
 export interface BridgeEvent {
   timestamp: number;
@@ -81,7 +82,7 @@ export class HandshakeError extends Error {
 /** Throw if a response is an Error reply, which sendRequest resolves rather than rejects */
 export function throwIfErrorResponse(resp: BridgeMessage, request: string): BridgeMessage {
   if (resp.payload?.messageType === 'Error') {
-    throw new Error(`${request} failed: ${JSON.stringify(resp.payload.attributes)}`);
+    throw new ArcusErrorReply(request, resp.payload.attributes);
   }
   return resp;
 }

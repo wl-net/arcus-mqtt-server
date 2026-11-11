@@ -1,9 +1,9 @@
 import type { Config } from '../config.js';
 import type { ArcusClient } from './client.js';
-import type { ArcusDevice, ArcusAttributes, ArcusMethodCall, AlarmState, DeviceSetting, PersonInfo, SceneInfo } from './types.js';
-import { isAttributeValue, isDeviceSetting } from './types.js';
+import type { ArcusDevice, ArcusAttributes, ArcusMethodCall, AlarmState, PersonInfo, SceneInfo } from './types.js';
+import { isAttributeValue } from './types.js';
 import { BridgeClient, throwIfErrorResponse } from './bridge-client.js';
-import { Base, DeviceSettings, Person, Place, SecuritySubsystem } from './capabilities.js';
+import { Base, Person, Place, SecuritySubsystem } from './capabilities.js';
 
 /** base:instances, e.g. { button1: ['but'] }, keeping only well-formed entries */
 function readInstances(value: unknown): Record<string, string[]> {
@@ -244,20 +244,6 @@ export class PlatformArcusClient implements ArcusClient {
     if (typeof status === 'string' && status.startsWith('INVALID')) {
       throw new Error(`${call.method} refused: ${status}`);
     }
-  }
-
-  async getDeviceSettings(address: string): Promise<DeviceSetting[]> {
-    // base:GetAttributes has the driver build the list, where place:ListDevices returns the
-    // saved copy. The attribute goes by its full name, which the driver takes as it is.
-    const resp = throwIfErrorResponse(
-      await this.bridge.sendRequest(address, Base.CMD_GETATTRIBUTES, { namespaces: [DeviceSettings.ATTR_PARAMS] }),
-      Base.CMD_GETATTRIBUTES,
-    );
-    const params: unknown = resp.payload.attributes[DeviceSettings.ATTR_PARAMS];
-    if (!Array.isArray(params) || !params.every(isDeviceSetting)) {
-      throw new Error(`${address} returned no device settings`);
-    }
-    return params;
   }
 
   onDeviceEvent(handler: (address: string, attributes: ArcusAttributes) => void): void {
