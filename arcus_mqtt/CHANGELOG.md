@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.9
+
+- New optional feature, `device_settings`: each setting an Arcus driver lists, such as a dimmer's LED mode or ramp rate, gets an entity under **Configuration** on the device's page. A setting with a range of values is a number, and one with a list of choices is a select. Changing one sends it to the device through Arcus. To turn it on, add `device_settings` to `FEATURES`. Read the README's section on it first.
+- Each setting is named with the short label its Arcus driver gives it, on an Arcus platform that sends labels. On an older platform, names come from the driver's descriptions. The full description, which says what values such as 0 mean, is the entity's `description` attribute.
+- When Arcus refuses a command because the API key is missing a permission, the log names that permission. The README now lists the permissions each optional feature needs in api-server mode.
+
 ## 0.2.8
 
 - Setting a dimmer's brightness from Home Assistant, including turning it on at a brightness, sends the dimmer one command instead of two (brightness, then on). Some dimmers, such as the Zooz ZEN77, can flash after each command they get, so they flash at most once per change instead of twice.
