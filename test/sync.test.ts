@@ -17,6 +17,8 @@ class FakeClient implements ArcusClient {
   listDevicesCalls = 0;
   listDevicesDelayMs = 0;
   failListDevices = false;
+  failGetHub = false;
+  failAlarm = false;
   private deviceHandlers: Array<(address: string, attributes: ArcusAttributes) => void> = [];
   private connectionHandlers: Array<(connected: boolean) => void> = [];
   private deviceListHandlers: Array<() => void> = [];
@@ -31,6 +33,7 @@ class FakeClient implements ArcusClient {
     return this.devices.map(d => ({ ...d, caps: new Set(d.caps), attributes: { ...d.attributes } }));
   }
   async getHub(): Promise<ArcusDevice | null> {
+    if (this.failGetHub) throw new ArcusErrorReply('place:GetHub', { code: 'error.unauthorized' });
     return this.hub && { ...this.hub, caps: new Set(this.hub.caps), attributes: { ...this.hub.attributes } };
   }
   readonly commands: Array<{ address: string; attributes: ArcusAttributes }> = [];
@@ -56,6 +59,7 @@ class FakeClient implements ArcusClient {
     this.deviceListHandlers.push(handler);
   }
   async getAlarmState(): Promise<AlarmState> {
+    if (this.failAlarm) throw new ArcusErrorReply('base:GetAttributes', { code: 'error.unauthorized' });
     return { ...this.alarm };
   }
   /** Arm modes and 'DISARM', in the order they were sent */
@@ -389,6 +393,16 @@ describe('sync', () => {
       assert.equal(broker.retained.get('arcus/LWW-1/connection'), 'offline');
       assert.equal(broker.json('arcus/LWW-1/state').connectivity, 'OFF');
     });
+
+    it('keeps the hub, and its devices linked to it, when fetching the hub fails', async () => {
+      const { broker, client } = await start((c) => { c.hub = hub(); });
+      client.failGetHub = true;
+      await resync(broker, client);
+      assert.ok(broker.retained.get('homeassistant/binary_sensor/arcus/LWW-1_connectivity/config'), 'removed the hub');
+      const door = broker.json('homeassistant/binary_sensor/arcus/door-1_contact/config');
+      assert.equal((door.device as { via_device?: string }).via_device, 'arcus_LWW-1');
+      assert.equal(broker.retained.get('arcus/LWW-1/connection'), 'online');
+    });
   });
 
   it('clears what older versions left on the broker once, not on every sync', async () => {
@@ -436,6 +450,23 @@ describe('sync', () => {
       });
       assert.deepEqual(broker.json('arcus/alarm/attributes'), { bypassed: 'ON', bypassed_sensors: ['Front Door'] });
       assert.ok(broker.retained.has('homeassistant/binary_sensor/arcus/alarm_bypassed/config'));
+    });
+
+    it("marks the alarm unavailable while its state can't be read, rather than changing it", async () => {
+      const { broker, client } = await start((c) => {
+        c.alarm = { securityMode: 'ARMED', alarmMode: 'ON', bypassedDevices: [] };
+      });
+      assert.equal(broker.retained.get('arcus/alarm/state'), 'armed_away');
+      assert.equal(broker.retained.get('arcus/alarm/availability'), 'online');
+
+      client.failAlarm = true;
+      await resync(broker, client);
+      assert.equal(broker.retained.get('arcus/alarm/availability'), 'offline');
+      assert.equal(broker.retained.get('arcus/alarm/state'), 'armed_away');
+
+      client.failAlarm = false;
+      await resync(broker, client);
+      assert.equal(broker.retained.get('arcus/alarm/availability'), 'online');
     });
 
     it('reports nothing bypassed while disarmed', async () => {

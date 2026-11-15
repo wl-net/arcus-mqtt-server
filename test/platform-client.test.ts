@@ -280,5 +280,60 @@ describe('PlatformArcusClient', () => {
       await client.connect();
       assert.deepEqual(await client.getAlarmState(), { securityMode: 'ARMED', alarmMode: 'ON', bypassedDevices: ['DRIV:dev:w1'] });
     });
+
+    it('throws when the alarm state comes back as an error, rather than reading it as disarmed', async () => {
+      // As Arcus refuses an API key without subsecurity:r:*
+      const { client } = await connect((req) => req.messageType === 'base:GetAttributes'
+        ? { messageType: 'Error', attributes: { code: 'error.unauthorized', message: 'Unauthorized' } }
+        : undefined);
+      await client.connect();
+      await assert.rejects(client.getAlarmState(), ArcusErrorReply);
+    });
+
+    it('throws when the reply has no alarm state', async () => {
+      const { client } = await connect(() => undefined);
+      await client.connect();
+      await assert.rejects(client.getAlarmState(), /no alarm state/);
+    });
+
+    it("doesn't pass on an alarm event whose state it couldn't read", async () => {
+      let fail = false;
+      const { server, client } = await connect((req) => {
+        if (req.messageType !== 'base:GetAttributes') return undefined;
+        return fail
+          ? { messageType: 'Error', attributes: { code: 'error.unauthorized' } }
+          : { messageType: 'base:GetAttributesResponse', attributes: { 'subsecurity:alarmState': 'ARMED', 'subsecurity:alarmMode': 'ON' } };
+      });
+      const states: string[] = [];
+      client.onAlarmEvent((state) => states.push(state.securityMode));
+      await client.connect();
+
+      server.sendEvent('SERV:subsecurity:place-1', 'base:ValueChange', { 'subsecurity:alarmState': 'ARMED' });
+      await until(() => states.length === 1, 2000, 'alarm event');
+      fail = true;
+      server.sendEvent('SERV:subsecurity:place-1', 'base:ValueChange', { 'subsecurity:lastArmedTime': 1 });
+      await until(() => server.requests.filter(r => r.messageType === 'base:GetAttributes').length === 2, 2000, 'second read');
+      await new Promise(r => setTimeout(r, 50));
+      assert.deepEqual(states, ['ARMED']);
+    });
+  });
+
+  describe('hub', () => {
+    it('throws when the hub comes back as an error, rather than reporting no hub', async () => {
+      const { client } = await connect((req) => req.messageType === 'place:GetHub'
+        ? { messageType: 'Error', attributes: { code: 'error.unauthorized' } }
+        : undefined);
+      await client.connect();
+      await assert.rejects(client.getHub(), ArcusErrorReply);
+    });
+
+    it('reports no hub for a place without one', async () => {
+      // The platform sends an empty hub, not a missing one
+      const { client } = await connect((req) => req.messageType === 'place:GetHub'
+        ? { messageType: 'place:GetHubResponse', attributes: { hub: {} } }
+        : undefined);
+      await client.connect();
+      assert.equal(await client.getHub(), null);
+    });
   });
 });

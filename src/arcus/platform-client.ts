@@ -221,9 +221,14 @@ export class PlatformArcusClient implements ArcusClient {
   }
 
   async getHub(): Promise<ArcusDevice | null> {
-    const resp = await this.bridge.sendRequest(this.bridge.placeDestination, 'place:GetHub', {});
+    // Throw on an Error reply, so the sync keeps the last known hub. Null would remove the hub from HA
+    const resp = throwIfErrorResponse(
+      await this.bridge.sendRequest(this.bridge.placeDestination, 'place:GetHub', {}),
+      'place:GetHub',
+    );
     const rawHub = resp.payload.attributes.hub as Record<string, unknown> | undefined;
-    if (!rawHub) return null;
+    // A place without a hub gets an empty hub back
+    if (typeof rawHub?.[Base.ATTR_ADDRESS] !== 'string') return null;
 
     const hub = transformDevice(rawHub);
     hub.name = (rawHub['hub:name'] as string) || 'Arcus Hub';
@@ -259,10 +264,19 @@ export class PlatformArcusClient implements ArcusClient {
   }
 
   async getAlarmState(): Promise<AlarmState> {
-    const resp = await this.bridge.sendRequest(this.subsecurityDestination, 'base:GetAttributes', {});
+    const resp = throwIfErrorResponse(
+      await this.bridge.sendRequest(this.subsecurityDestination, 'base:GetAttributes', {}),
+      'base:GetAttributes on the security subsystem',
+    );
     const attrs = resp.payload.attributes;
+    const securityMode = attrs[SecuritySubsystem.ATTR_ALARMSTATE];
+    // The subsystem always has a state, so a reply without one is bad. Throw rather than guess
+    // DISARMED, so the sync marks the panel unavailable instead of showing an armed alarm as off
+    if (typeof securityMode !== 'string') {
+      throw new Error(`The subsecurity reply has no alarm state (${resp.payload.messageType})`);
+    }
     return {
-      securityMode: (attrs['subsecurity:alarmState'] as string) ?? 'DISARMED',
+      securityMode,
       alarmMode: (attrs['subsecurity:alarmMode'] as string) ?? 'ON',
       bypassedDevices: (attrs[SecuritySubsystem.ATTR_BYPASSEDDEVICES] as string[] | undefined) ?? [],
     };
