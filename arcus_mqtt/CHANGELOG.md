@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.10
+
+- Fixes the alarm showing as disarmed when Arcus doesn't answer with its state, for example when the API key can't read the security subsystem. The alarm now shows as unavailable until Arcus answers again.
+- Fixes the hub and its Z-Wave and Zigbee devices dropping out of Home Assistant until the next sync after an error from Arcus.
+- Fixes places without a hub never coming online.
+- On a new install, the alarm's entity ID is `alarm_control_panel.arcus_alarm` and its bypassed sensors' is `binary_sensor.arcus_alarm_bypassed`, instead of IDs made from the device name. Entities you already have keep their IDs.
+
 ## 0.2.9
 
 - New optional feature, `device_settings`: each setting an Arcus driver lists, such as a dimmer's LED mode or ramp rate, gets an entity under **Configuration** on the device's page. A setting with a range of values is a number, and one with a list of choices is a select. Changing one sends it to the device through Arcus. To turn it on, add `device_settings` to `FEATURES`. Read the README's section on it first.
