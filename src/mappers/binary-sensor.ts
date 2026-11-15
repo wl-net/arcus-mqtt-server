@@ -103,7 +103,6 @@ export const binarySensorMapper: Mapper = {
         payload: {
           name: def.suffix.charAt(0).toUpperCase() + def.suffix.slice(1),
           unique_id: objectId,
-          object_id: objectId,
           state_topic: stateTopic(config, device.address),
           value_template: `{{ value_json.${def.suffix} }}`,
           payload_on: 'ON',

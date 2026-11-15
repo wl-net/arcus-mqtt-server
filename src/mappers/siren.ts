@@ -33,7 +33,6 @@ export const sirenMapper: Mapper = {
         payload: {
           name: null,
           unique_id: objectId,
-          object_id: objectId,
           state_topic: stateTopic(config, device.address),
           // HA's MQTT siren reads state_value_template; it ignores value_template
           state_value_template: '{{ value_json.siren }}',

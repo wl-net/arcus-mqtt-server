@@ -26,7 +26,6 @@ export const shadeMapper: Mapper = {
         payload: {
           name: null,
           unique_id: objectId,
-          object_id: objectId,
           device_class: 'shade',
           command_topic: commandTopic(config, device.address, 'shade'),
           payload_open: 'OPEN',

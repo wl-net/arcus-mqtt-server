@@ -81,7 +81,6 @@ export const irrigationMapper: Mapper = {
           payload: {
             name: label,
             unique_id: `${id}_zone_${zone}`,
-            object_id: `${id}_zone_${zone}`,
             device_class: 'water',
             value_template: `{{ value_json.zone_${zone} }}`,
             command_topic: commandTopic(config, device.address, `zone_${zone}`),
@@ -98,7 +97,6 @@ export const irrigationMapper: Mapper = {
           payload: {
             name: label ? `${label} watering time` : 'Watering time',
             unique_id: `${id}_zone_${zone}_duration`,
-            object_id: `${id}_zone_${zone}_duration`,
             value_template: `{{ value_json.zone_${zone}_duration }}`,
             command_topic: commandTopic(config, device.address, `zone_${zone}_duration`),
             min,

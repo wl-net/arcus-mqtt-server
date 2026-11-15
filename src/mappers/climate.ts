@@ -113,7 +113,6 @@ export const climateMapper: Mapper = {
     const payload: Record<string, unknown> = {
       name: null,
       unique_id: objectId,
-      object_id: objectId,
       state_topic: state,
       temperature_unit: 'C',
       // Mode
@@ -167,7 +166,6 @@ export const climateMapper: Mapper = {
         payload: {
           name: 'Emergency heat',
           unique_id: switchId,
-          object_id: switchId,
           state_topic: state,
           value_template: '{{ value_json.emergency_heat }}',
           command_topic: commandTopic(config, device.address, 'emergency_heat'),

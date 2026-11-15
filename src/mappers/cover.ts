@@ -22,7 +22,6 @@ export const coverMapper: Mapper = {
         payload: {
           name: null,
           unique_id: objectId,
-          object_id: objectId,
           device_class: 'garage',
           state_topic: stateTopic(config, device.address),
           command_topic: commandTopic(config, device.address, 'door'),

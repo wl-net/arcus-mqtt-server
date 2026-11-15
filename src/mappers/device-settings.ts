@@ -200,7 +200,6 @@ export const deviceSettingsMapper: Mapper = {
       const common = {
         name: setting.name,
         unique_id: objectId,
-        object_id: objectId,
         state_topic: stateTopic(config, device.address),
         value_template: `{{ value_json.${entity} }}`,
         command_topic: commandTopic(config, device.address, entity),

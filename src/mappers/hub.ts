@@ -29,7 +29,6 @@ export const hubMapper: Mapper = {
         payload: {
           name: 'Connectivity',
           unique_id: `${id}_connectivity`,
-          object_id: `${id}_connectivity`,
           value_template: '{{ value_json.connectivity }}',
           payload_on: 'ON',
           payload_off: 'OFF',
@@ -48,7 +47,6 @@ export const hubMapper: Mapper = {
           payload: {
             name: 'Mains power',
             unique_id: `${id}_mains_power`,
-            object_id: `${id}_mains_power`,
             value_template: '{{ value_json.mains_power }}',
             payload_on: 'ON',
             payload_off: 'OFF',
@@ -61,7 +59,6 @@ export const hubMapper: Mapper = {
           payload: {
             name: 'Battery',
             unique_id: `${id}_battery`,
-            object_id: `${id}_battery`,
             value_template: '{{ value_json.battery }}',
             device_class: 'battery',
             unit_of_measurement: '%',

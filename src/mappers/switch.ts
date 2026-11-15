@@ -22,7 +22,6 @@ export const switchMapper: Mapper = {
         payload: {
           name: null,
           unique_id: objectId,
-          object_id: objectId,
           state_topic: stateTopic(config, device.address),
           command_topic: commandTopic(config, device.address, 'switch'),
           value_template: '{{ value_json.switch }}',

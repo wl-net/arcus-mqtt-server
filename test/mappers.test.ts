@@ -23,7 +23,7 @@ import { FakeMqtt, makeDevice, testConfig } from './helpers.js';
 const config = testConfig();
 
 function discoveryById(mapper: Mapper, device: ReturnType<typeof makeDevice>): Map<string, Record<string, unknown>> {
-  return new Map(mapper.buildDiscovery(config, device).map(d => [String(d.payload.object_id), d.payload]));
+  return new Map(mapper.buildDiscovery(config, device).map(d => [String(d.payload.unique_id), d.payload]));
 }
 
 describe('binary sensor mapper', () => {
@@ -132,10 +132,10 @@ describe('lock mapper', () => {
 
     it('adds a buzz-in button only for locks that support it', () => {
       const plain = makeDevice('DRIV:dev:l1', ['doorlock'], { 'doorlock:lockstate': 'LOCKED' });
-      assert.equal(new Map(lockMapper.buildDiscovery(buzzIn, plain).map(d => [d.payload.object_id, d])).has('l1_buzz_in'), false);
+      assert.equal(new Map(lockMapper.buildDiscovery(buzzIn, plain).map(d => [d.payload.unique_id, d])).has('l1_buzz_in'), false);
       assert.equal(lockMapper.handleMethodCommand?.(buzzIn, plain, 'buzz_in', 'PRESS'), null);
 
-      const disc = lockMapper.buildDiscovery(buzzIn, buzzable()).find(d => d.payload.object_id === 'l1_buzz_in');
+      const disc = lockMapper.buildDiscovery(buzzIn, buzzable()).find(d => d.payload.unique_id === 'l1_buzz_in');
       assert.equal(disc?.payload.command_topic, 'arcus/l1/buzz_in/set');
       assert.deepEqual(lockMapper.handleMethodCommand?.(buzzIn, buzzable(), 'buzz_in', 'PRESS'), { method: 'doorlock:BuzzIn', args: {} });
       assert.equal(lockMapper.handleMethodCommand?.(buzzIn, buzzable(), 'lock', 'UNLOCK'), null);
@@ -663,7 +663,7 @@ describe('device settings mapper (device_settings feature)', () => {
   ];
   const keypad = () => makeDevice('DRIV:dev:kp1', ['dev', 'devsettings'], { 'devsettings:params': params });
   const byId = (device = keypad()) =>
-    new Map(deviceSettingsMapper.buildDiscovery(settingsOn, device).map(d => [String(d.payload.object_id), d]));
+    new Map(deviceSettingsMapper.buildDiscovery(settingsOn, device).map(d => [String(d.payload.unique_id), d]));
 
   it('makes a number per range and a select per enum, named from the description', () => {
     const configs = byId();

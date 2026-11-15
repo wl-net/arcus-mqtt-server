@@ -67,7 +67,6 @@ export const lockMapper: Mapper = {
         payload: {
           name: null,
           unique_id: objectId,
-          object_id: objectId,
           state_topic: stateTopic(config, device.address),
           command_topic: commandTopic(config, device.address, 'lock'),
           value_template: '{{ value_json.lock }}',
@@ -91,7 +90,6 @@ export const lockMapper: Mapper = {
         payload: {
           name: 'Buzz in',
           unique_id: buttonId,
-          object_id: buttonId,
           command_topic: commandTopic(config, device.address, 'buzz_in'),
           payload_press: 'PRESS',
           device: buildDeviceInfo(config, device),

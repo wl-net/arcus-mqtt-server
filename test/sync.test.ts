@@ -4,7 +4,9 @@ import { startSync } from '../src/sync.js';
 import type { ArcusClient } from '../src/arcus/client.js';
 import type { ArcusDevice, ArcusAttributes, ArcusMethodCall, AlarmState, PersonInfo, SceneInfo } from '../src/arcus/types.js';
 import { ArcusErrorReply } from '../src/arcus/types.js';
+import { MockArcusClient } from '../src/arcus/client.js';
 import type { Config } from '../src/config.js';
+import { Features } from '../src/config.js';
 import { FakeMqtt, delay, makeDevice, testConfig, until, quietConsole } from './helpers.js';
 
 /** A scriptable ArcusClient: tests change what it returns and fire its events */
@@ -443,6 +445,15 @@ describe('sync', () => {
     assert.equal(broker.json('arcus/plug-1/state').energy, 1200);
   });
 
+  it("sends no object_id, which Home Assistant doesn't read", async () => {
+    const broker = new FakeMqtt();
+    const sync = await startSync(broker, testConfig({ features: new Set(Object.values(Features)) }), new MockArcusClient());
+    stop = sync.stop;
+    const sent = [...broker.retained].filter(([topic, payload]) => topic.startsWith('homeassistant/') && payload);
+    assert.ok(sent.length > 50, `only ${sent.length} configs`);
+    assert.deepEqual(sent.filter(([, payload]) => 'object_id' in JSON.parse(payload)).map(([topic]) => topic), []);
+  });
+
   describe('alarm bypass', () => {
     it('reports bypassed sensors by name while armed', async () => {
       const { broker } = await start((c) => {
@@ -520,6 +531,10 @@ describe('sync', () => {
       assert.deepEqual(uniqueIds(barnBroker).filter(id => houseIds.has(id)), []);
       assert.equal(houseBroker.retained.get('arcus/alarm/state'), 'disarmed');
       assert.equal(barnBroker.retained.get('barn/alarm/state'), 'armed_away');
+      // Both alarm devices are "Arcus Security", so HA's own entity IDs for them would clash
+      assert.equal(houseBroker.json('homeassistant/alarm_control_panel/arcus/alarm/config').default_entity_id, 'alarm_control_panel.arcus_alarm');
+      assert.equal(barnBroker.json('homeassistant/alarm_control_panel/barn/alarm/config').default_entity_id, 'alarm_control_panel.barn_alarm');
+      assert.equal(barnBroker.json('homeassistant/binary_sensor/barn/alarm_bypassed/config').default_entity_id, 'binary_sensor.barn_alarm_bypassed');
 
       // HA disarming the barn: the broker delivers it to both connections
       for (const broker of [houseBroker, barnBroker]) broker.deliver('barn/alarm/set', 'DISARM');

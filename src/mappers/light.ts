@@ -57,7 +57,6 @@ export const lightMapper: Mapper = {
     const payload: Record<string, unknown> = {
       name: null,
       unique_id: objectId,
-      object_id: objectId,
       state_topic: state,
       state_value_template: '{{ value_json.light_state }}',
       command_topic: commandTopic(config, device.address, 'light'),

@@ -23,7 +23,6 @@ function accessSwitch(config: Config, lock: ArcusDevice, person: PersonInfo): HA
     payload: {
       name: `${person.name} access`,
       unique_id: objectId,
-      object_id: objectId,
       state_topic: stateTopic(config, lock.address),
       value_template: `{{ 'ON' if '${person.id}' in (value_json.access | default([])) else 'OFF' }}`,
       command_topic: commandTopic(config, lock.address, accessEntity(person.id)),

@@ -28,7 +28,6 @@ export const ventMapper: Mapper = {
         payload: {
           name: null,
           unique_id: `${id}_vent`,
-          object_id: `${id}_vent`,
           device_class: 'damper',
           command_topic: commandTopic(config, device.address, 'vent'),
           payload_open: 'OPEN',
@@ -47,7 +46,6 @@ export const ventMapper: Mapper = {
         payload: {
           name: 'Obstruction',
           unique_id: `${id}_vent_obstruction`,
-          object_id: `${id}_vent_obstruction`,
           state_topic: stateTopic(config, device.address),
           value_template: '{{ value_json.vent_obstruction }}',
           payload_on: 'ON',
@@ -65,7 +63,6 @@ export const ventMapper: Mapper = {
         payload: {
           name: 'Duct pressure',
           unique_id: `${id}_vent_pressure`,
-          object_id: `${id}_vent_pressure`,
           state_topic: stateTopic(config, device.address),
           value_template: '{{ value_json.vent_pressure }}',
           device_class: 'pressure',

@@ -22,7 +22,6 @@ export const valveMapper: Mapper = {
         payload: {
           name: null,
           unique_id: objectId,
-          object_id: objectId,
           device_class: 'water',
           state_topic: stateTopic(config, device.address),
           value_template: '{{ value_json.valve }}',

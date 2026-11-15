@@ -42,7 +42,11 @@ export function publishAlarmDiscovery(mqtt: Mqtt, config: Config): void {
   const payload = {
     name: 'Security Alarm',
     unique_id: `${config.deviceIdPrefix}_alarm`,
-    object_id: `${config.deviceIdPrefix}_alarm`,
+    // HA names entities after their device, and every bridge's alarm device is "Arcus Security",
+    // so a second bridge's alarm would get ..._2. This asks for the prefix instead. HA keeps the
+    // ID of an entity it already has, so only new ones change. Device entities don't set it:
+    // their names make better IDs than Arcus device IDs
+    default_entity_id: `alarm_control_panel.${config.deviceIdPrefix}_alarm`,
     state_topic: topics.state,
     command_topic: topics.command,
     // Available only while both the bridge's Arcus connection and the alarm state fetch are good
@@ -70,7 +74,7 @@ export function publishAlarmDiscovery(mqtt: Mqtt, config: Config): void {
   publishDiscoveryConfig(mqtt, discoveryTopic(config, 'binary_sensor', 'alarm_bypassed'), {
     name: 'Bypassed sensors',
     unique_id: `${config.deviceIdPrefix}_alarm_bypassed`,
-    object_id: `${config.deviceIdPrefix}_alarm_bypassed`,
+    default_entity_id: `binary_sensor.${config.deviceIdPrefix}_alarm_bypassed`,
     state_topic: topics.attributes,
     value_template: '{{ value_json.bypassed }}',
     payload_on: 'ON',
