@@ -9,7 +9,12 @@ import type { Mapper } from './index.js';
 /**
  * Maps Arcus shade → HA cover (device_class: shade) with position.
  * shade:level is 0 (closed) to 100 (open). Open/close are sent as level changes,
- * since commands go out as attribute sets; HA derives open/closed from the position.
+ * since commands go out as attribute sets.
+ *
+ * shade:movement says which way a move Arcus sent is going; level keeps its old
+ * value until the move ends. With a state topic, HA stops deriving open/closed
+ * from the position, so the state names open or closed itself whenever the shade
+ * isn't moving, rather than relying on HA's "stopped".
  */
 export const shadeMapper: Mapper = {
   matches(device: ArcusDevice): boolean {
@@ -32,6 +37,8 @@ export const shadeMapper: Mapper = {
           payload_close: 'CLOSE',
           // Arcus shades can't be stopped mid-travel through attribute sets
           payload_stop: null,
+          state_topic: stateTopic(config, device.address),
+          value_template: '{{ value_json.shade_state }}',
           position_topic: stateTopic(config, device.address),
           position_template: positionTemplate('shade_position'),
           set_position_topic: commandTopic(config, device.address, 'shade_position'),
@@ -44,7 +51,10 @@ export const shadeMapper: Mapper = {
 
   buildState(_config: Config, device: ArcusDevice): Record<string, unknown> {
     const level = device.attributes[Shade.ATTR_LEVEL];
-    return { shade_position: typeof level === 'number' ? level : null };
+    return {
+      shade_position: typeof level === 'number' ? level : null,
+      shade_state: shadeState(device.attributes[Shade.ATTR_MOVEMENT], level),
+    };
   },
 
   handleCommand(
@@ -67,3 +77,11 @@ export const shadeMapper: Mapper = {
     return null;
   },
 };
+
+/** HA cover state: opening/closing while moving, else open/closed from the level, null if unknown. */
+function shadeState(movement: unknown, level: unknown): string | null {
+  if (movement === Shade.MOVEMENT_OPENING) return 'opening';
+  if (movement === Shade.MOVEMENT_CLOSING) return 'closing';
+  if (typeof level !== 'number') return null;
+  return level === 0 ? 'closed' : 'open';
+}

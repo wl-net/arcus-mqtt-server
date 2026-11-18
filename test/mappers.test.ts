@@ -446,7 +446,20 @@ describe('shade mapper', () => {
     assert.equal(disc.topic, 'homeassistant/cover/arcus/sh1_shade/config');
     assert.equal(disc.payload.device_class, 'shade');
     assert.equal(disc.payload.payload_stop, null);
-    assert.deepEqual(shadeMapper.buildState(config, shade), { shade_position: 60 });
+    assert.equal(disc.payload.state_topic, disc.payload.position_topic);
+    assert.deepEqual(shadeMapper.buildState(config, shade), { shade_position: 60, shade_state: 'open' });
+  });
+
+  it('shows a move Arcus sent as opening or closing', () => {
+    const state = (attrs: ArcusAttributes) =>
+      shadeMapper.buildState(config, makeDevice('DRIV:dev:sh1', ['shade'], attrs)).shade_state;
+    assert.equal(state({ 'shade:level': 10, 'shade:movement': 'OPENING' }), 'opening');
+    assert.equal(state({ 'shade:level': 90, 'shade:movement': 'CLOSING' }), 'closing');
+    assert.equal(state({ 'shade:level': 0, 'shade:movement': 'STOPPED' }), 'closed');
+    assert.equal(state({ 'shade:level': 1, 'shade:movement': 'STOPPED' }), 'open');
+    // A driver that doesn't report movement still gets open or closed from the level
+    assert.equal(state({ 'shade:level': 0 }), 'closed');
+    assert.equal(state({}), null);
   });
 
   it('opens, closes and moves to a position through the level', () => {

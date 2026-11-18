@@ -37,7 +37,7 @@ Arcus Platform ──► Arcus MQTT Server ──► MQTT broker ◄── Home 
 | Garage door opener | `cover` (garage) | Open/close, opening/closing |
 | Water valve | `valve` (water) | Open/close, opening/closing |
 | Irrigation controller | `valve` (water) + `number` per zone | Water or stop each zone; watering time per zone, used when a zone is opened |
-| Shade | `cover` (shade) | Open/close and set position |
+| Shade | `cover` (shade) | Open/close and set position; opening/closing while a move from Arcus is under way, on drivers that report it |
 | Vent | `cover` (damper), `binary_sensor`, `sensor` | Open/close and set position; obstruction; duct air pressure |
 | Siren | `siren` with the `sirens` [optional feature](#optional-features) | Sound and silence |
 | Device settings | `number`, `select` with the `device_settings` [optional feature](#optional-features) | Settings the Arcus driver lists, such as a dimmer's LED mode or ramp rate |

@@ -310,6 +310,7 @@ function buildMockDevices(): ArcusDevice[] {
       attributes: {
         [Shade.ATTR_LEVEL]: 60,
         [Shade.ATTR_SHADESTATE]: Shade.SHADESTATE_OK,
+        [Shade.ATTR_MOVEMENT]: Shade.MOVEMENT_STOPPED,
         [DevicePower.ATTR_SOURCE]: DevicePower.SOURCE_BATTERY,
         [DevicePower.ATTR_BATTERY]: 75,
         [Device.ATTR_DEVTYPEHINT]: 'Shade',
