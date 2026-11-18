@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.11
+
+- Each button now has an event entity, such as **Button 1** to **Button 4** and **Main button** on a Zooz ZEN32 scene controller, so presses show in Home Assistant's logbook and history. A single-button device's event entity takes the device's name. The device triggers are still there, so automations that use them keep working.
+- To run an automation on a press, use the **Event received** trigger on the event entity, or the device trigger. A plain **State** trigger on an event entity also runs when the entity comes back from unavailable, which happens when Home Assistant reconnects to the MQTT broker.
+
 ## 0.2.10
 
 - Fixes the alarm showing as disarmed when Arcus doesn't answer with its state, for example when the API key can't read the security subsystem. The alarm now shows as unavailable until Arcus answers again.
