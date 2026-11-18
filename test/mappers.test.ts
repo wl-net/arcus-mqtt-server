@@ -330,7 +330,13 @@ describe('device trigger mapper', () => {
     instances: Object.fromEntries(buttons.map(b => [b, ['but']])),
   });
   const triggers = (device: ReturnType<typeof makeDevice>) =>
-    deviceTriggerMapper.buildDiscovery(config, device).map(d => [d.payload.subtype, d.payload.payload]);
+    deviceTriggerMapper.buildDiscovery(config, device)
+      .filter(d => d.topic.includes('/device_automation/'))
+      .map(d => [d.payload.subtype, d.payload.payload]);
+  const events = (device: ReturnType<typeof makeDevice>) =>
+    deviceTriggerMapper.buildDiscovery(config, device)
+      .filter(d => d.topic.includes('/event/'))
+      .map(d => d.payload);
 
   it('keeps one trigger for a single-button device', () => {
     const device = makeDevice('DRIV:dev:bt1', ['but'], { 'but:state': 'RELEASED' });
@@ -359,6 +365,32 @@ describe('device trigger mapper', () => {
   it('ignores instances of other capabilities', () => {
     const strip = { ...makeDevice('DRIV:dev:ps1', ['swit']), instances: { outlet1: ['swit'] } };
     assert.equal(deviceTriggerMapper.matches(strip), false);
+  });
+
+  it('adds an event entity per button that reads the trigger topic', () => {
+    const scene = withButtons('DRIV:dev:sc1', ['main', 'button2', 'button1'], ['swit']);
+    assert.deepEqual(events(scene).map(e => [e.unique_id, e.name, e.state_topic]), [
+      ['sc1_button1_event', 'Button 1', 'arcus/sc1/trigger'],
+      ['sc1_button2_event', 'Button 2', 'arcus/sc1/trigger'],
+      ['sc1_main_event', 'Main button', 'arcus/sc1/trigger'],
+    ]);
+    const [first] = events(scene);
+    assert.equal(first.device_class, 'button');
+    assert.deepEqual(first.event_types, ['press']);
+    assert.equal(first.value_template, '{% if value == "button1" %}{"event_type":"press"}{% endif %}');
+    // HA's logbook would show each return from unavailable as a press, so no availability
+    assert.equal(first.availability, undefined);
+
+    assert.deepEqual(events(withButtons('DRIV:dev:fob1', ['home', 'a'], ['pres'])).map(e => e.name), ['A button', 'Home button']);
+  });
+
+  it('adds one event entity for a single-button device', () => {
+    const [event, ...rest] = events(makeDevice('DRIV:dev:bt1', ['but']));
+    assert.deepEqual(rest, []);
+    assert.equal(event.unique_id, 'bt1_button_event');
+    // Named after the device: a "Smart Button" device's entity isn't "Smart Button Button"
+    assert.equal(event.name, null);
+    assert.equal(event.value_template, '{% if value == "PRESSED" %}{"event_type":"press"}{% endif %}');
   });
 
   it('publishes the pressed button, not releases or other attributes', () => {

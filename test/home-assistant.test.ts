@@ -424,4 +424,29 @@ describe('Home Assistant', { skip: !process.env.TEST_HA, timeout: 20 * 60_000 },
       return byId.get(led) === 'Always off' && Number(byId.get(ramp)) === 5;
     }, 15_000, 'the new settings to show in Home Assistant');
   });
+
+  // Every button on a device shares its trigger topic, so each event entity must pick out its
+  // own button's presses and ignore the rest without logging anything
+  it('shows a button press on that button\'s event entity', async () => {
+    const entityId = (uniqueId: string) => registry.find(e => e.unique_id === uniqueId)?.entity_id;
+    const home = entityId('keyfob-001_home_event');
+    const away = entityId('keyfob-001_away_event');
+    const single = entityId('button-001_button_event');
+    assert.ok(home && away && single, 'no event entities for the mock buttons');
+
+    await socket.call('call_service', { domain: 'system_log', service: 'clear' });
+    const client = await connectAsync(brokerUrl);
+    await client.publishAsync(`${PLACES[0].prefix}/keyfob-001/trigger`, 'home');
+    await client.publishAsync(`${PLACES[0].prefix}/button-001/trigger`, 'PRESSED');
+    await client.endAsync();
+
+    let byId = new Map<string, HaState>();
+    await waitFor(async () => {
+      byId = new Map((await socket.call<HaState[]>('get_states')).map(s => [s.entity_id, s]));
+      return byId.get(home)?.attributes?.event_type === 'press' && byId.get(single)?.attributes?.event_type === 'press';
+    }, 15_000, 'the presses to show in Home Assistant');
+    assert.equal(byId.get(away)?.state, 'unknown');
+    const logged = (await socket.call<LogEntry[]>('system_log/list')).map(e => `${e.level} ${e.name}: ${e.message.join(' | ')}`);
+    assert.deepEqual(logged, []);
+  });
 });

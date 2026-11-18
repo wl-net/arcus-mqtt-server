@@ -44,8 +44,8 @@ Arcus Platform ──► Arcus MQTT Server ──► MQTT broker ◄── Home 
 | Temperature | `sensor` | Temperature reading |
 | Humidity | `sensor` | Humidity reading |
 | Battery | `sensor` | Battery percentage |
-| Button / remote | `device_automation` | A trigger per button, including each button on multi-button remotes and scene controllers |
-| Key fob | `device_automation`, `binary_sensor` | A trigger per button; presence (home/away) |
+| Button / remote | `device_automation`, `event` | A trigger and an event entity per button, including each button on multi-button remotes and scene controllers |
+| Key fob | `device_automation`, `event`, `binary_sensor` | A trigger and an event entity per button; presence (home/away) |
 | Alarm | `alarm_control_panel` | Arm home/away, disarm |
 | Alarm bypass | `binary_sensor` | On while armed with sensors bypassed; lists them by name |
 | Scenes | `button` + `device_automation` | Fire scenes, scene triggers |
@@ -278,7 +278,8 @@ Devices whose Arcus driver lists its settings get an entity for each one, under 
 
 - **Alarm bypass notifications.** Arming with a door or window open arms around it (Arcus "arm bypassed"). The **Bypassed sensors** binary sensor on the *Arcus Security* device turns on when that happens, and its `bypassed_sensors` attribute lists the sensors. Trigger a notification automation on it turning on.
 - **Thermostat fan.** Arcus fans have two states: run only while heating or cooling, or run all the time. They appear as **off** and **on** (or off/low/medium/high for multi-speed fans), because HomeKit's fan toggle needs an "off" mode. "Off" still runs the fan during heating and cooling.
-- **Buttons.** Each button press fires a device trigger: in an automation, choose the remote as the device, then the button. Arcus only reports presses, so holds and double presses can't be told apart from single presses.
+- **Buttons.** Each button has an event entity, such as **Button 1** on a scene controller, so presses show in the logbook and history. A single-button device's event entity takes the device's name. To run an automation on a press, use the **Event received** trigger on the event entity, or the device trigger: choose the remote under **Devices**, then the button. Don't use a plain **State** trigger on the event entity: it also runs when the entity comes back from unavailable, which happens when Home Assistant reconnects to the MQTT broker. Arcus only reports presses, so holds and double presses can't be told apart from single presses.
+- **Button availability.** Event entities stay available while the bridge or the remote is offline. Home Assistant's logbook shows an event entity coming back from unavailable as another press, so this keeps a bridge restart from logging a press for every button. They still go unavailable while Home Assistant is disconnected from the broker, for example while the Mosquitto app restarts, so the logbook can show one press per button after that.
 - **Key fob presence.** A fob shows as away once the hub hasn't heard from it for a while (10 minutes for Iris fobs), and home again as soon as it's heard.
 - **Emergency heat.** Thermostats whose Arcus driver supports emergency heat get an **Emergency heat** switch. On, the thermostat runs only its backup heat, as a heat pump needs when it's too cold outside for the compressor; off, it goes back to its previous mode. The switch appears whether or not the thermostat controls a heat pump, so disable it in Home Assistant if you don't need it.
 - **HomeKit.** HomeKit Bridge sets up an accessory's controls when it creates it. After updating this server, reload HomeKit Bridge (**Settings → Devices & Services → HomeKit Bridge → ⋮ → Reload**) so changes such as new fan modes reach HomeKit. If an accessory still misbehaves, use the `homekit.reset_accessory` action on it.
@@ -318,7 +319,7 @@ src/
     ├── lock.ts           # doorlock → lock; buzz in, PIN access state and commands
     ├── cover.ts          # motdoor → cover (garage)
     ├── sensor.ts         # temp/humid/battery/pow → sensor
-    ├── device-trigger.ts # but, one per button → device_automation
+    ├── device-trigger.ts # but, one per button → device_automation, event
     ├── hub.ts            # hub connectivity/power/battery → binary_sensor, sensor
     ├── valve.ts          # valv → valve
     ├── shade.ts          # shade → cover
@@ -362,7 +363,8 @@ arcus/bridge/availability            # Arcus connection is up
 arcus/{device_id}/availability       # device is online (devconn:state)
 arcus/{hub_id}/connection            # hub is connected (hubconn:state)
 
-# Button presses (not retained): PRESSED, or the button's name on multi-button devices
+# Button presses (not retained): PRESSED, or the button's name on multi-button devices.
+# Read by both the device triggers and the event entities
 arcus/{device_id}/trigger
 
 # Alarm
