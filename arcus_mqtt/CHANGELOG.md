@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.12
+
+- A shade now shows as opening or closing in Home Assistant while it moves, if its Arcus driver reports which way it's moving. On the current Arcus platform, the Springs roller and cellular shades do, for moves sent through Arcus. Other shades, and moves started from a shade's own remote, show as open or closed as before.
+
 ## 0.2.11
 
 - Each button now has an event entity, such as **Button 1** to **Button 4** and **Main button** on a Zooz ZEN32 scene controller, so presses show in Home Assistant's logbook and history. A single-button device's event entity takes the device's name. The device triggers are still there, so automations that use them keep working.
